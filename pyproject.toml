@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "i2r-active-da"
+version = "0.1.0"
+description = ""
+authors = ["Ng Wei En <weien1292@gmail.com>"]
+license = "MIT License"
+readme = "README.md"
+packages = [{include = "i2r_active_da"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+torch = "^2.0.1"
+torchvision = "^0.15.2"
+wandb = "^0.15.3"
+tqdm = "^4.65.0"
+
+[tool.poetry.group.dev.dependencies]
+black = {extras = ["jupyter"], version = "^23.3.0"}
+flake8 = "^6.0.0"
+pre-commit = "^3.3.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
