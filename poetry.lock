@@ -1122,6 +1122,23 @@ docs = ["docutils (<0.20)", "ipykernel", "jinja2", "jupyter-client", "jupyter-se
 test = ["ipykernel", "pre-commit", "pytest (>=7.0)", "pytest-console-scripts", "pytest-jupyter[server] (>=0.4)", "pytest-timeout", "requests"]
 
 [[package]]
+name = "jupyter-server-mathjax"
+version = "0.2.6"
+description = "MathJax resources as a Jupyter Server Extension."
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "jupyter_server_mathjax-0.2.6-py3-none-any.whl", hash = "sha256:416389dde2010df46d5fbbb7adb087a5607111070af65a1445391040f2babb5e"},
+    {file = "jupyter_server_mathjax-0.2.6.tar.gz", hash = "sha256:bb1e6b6dc0686c1fe386a22b5886163db548893a99c2810c36399e9c4ca23943"},
+]
+
+[package.dependencies]
+jupyter-server = ">=1.1"
+
+[package.extras]
+test = ["jupyter-server[test]", "pytest"]
+
+[[package]]
 name = "jupyter-server-terminals"
 version = "0.4.4"
 description = "A Jupyter Server Extension Providing Terminals."
@@ -1521,6 +1538,32 @@ test = ["ipykernel", "ipywidgets (>=7)", "pre-commit", "pytest", "pytest-depende
 webpdf = ["pyppeteer (>=1,<1.1)"]
 
 [[package]]
+name = "nbdime"
+version = "3.2.1"
+description = "Diff and merge of Jupyter Notebooks"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "nbdime-3.2.1-py2.py3-none-any.whl", hash = "sha256:a99fed2399fd939e2e577db4bb6e957aac860af4cf583044b723cc9a448c644e"},
+    {file = "nbdime-3.2.1.tar.gz", hash = "sha256:31409a30f848ffc6b32540697e82d5a0a1b84dcc32716ca74e78bcc4b457c453"},
+]
+
+[package.dependencies]
+colorama = "*"
+GitPython = "<2.1.4 || >2.1.4,<2.1.5 || >2.1.5,<2.1.6 || >2.1.6"
+jinja2 = ">=2.9"
+jupyter-server = "*"
+jupyter-server-mathjax = ">=0.2.2"
+nbformat = "*"
+pygments = "*"
+requests = "*"
+tornado = "*"
+
+[package.extras]
+docs = ["recommonmark", "sphinx", "sphinx-rtd-theme"]
+test = ["jsonschema", "jupyter-server[test]", "notebook", "pytest (>=3.6)", "pytest-cov", "pytest-timeout", "pytest-tornado", "requests", "tabulate"]
+
+[[package]]
 name = "nbformat"
 version = "5.8.0"
 description = "The Jupyter Notebook format"
@@ -1873,6 +1916,21 @@ files = [
 [package.extras]
 docs = ["furo (>=2023.3.27)", "proselint (>=0.13)", "sphinx (>=6.2.1)", "sphinx-autodoc-typehints (>=1.23,!=1.23.4)"]
 test = ["appdirs (==1.4.4)", "covdefaults (>=2.3)", "pytest (>=7.3.1)", "pytest-cov (>=4)", "pytest-mock (>=3.10)"]
+
+[[package]]
+name = "plotly"
+version = "5.14.1"
+description = "An open-source, interactive data visualization library for Python"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "plotly-5.14.1-py2.py3-none-any.whl", hash = "sha256:a63f3ad9e4cc2e02902a738e5e3e7f3d1307f2732ac71a6c28f1238ed3052826"},
+    {file = "plotly-5.14.1.tar.gz", hash = "sha256:bcac86d7fcba3eff7260c1eddc36ca34dae2aded10a0709808446565e0e53b93"},
+]
+
+[package.dependencies]
+packaging = "*"
+tenacity = ">=6.2.0"
 
 [[package]]
 name = "poethepoet"
@@ -2668,6 +2726,20 @@ pure-eval = "*"
 tests = ["cython", "littleutils", "pygments", "pytest", "typeguard"]
 
 [[package]]
+name = "tenacity"
+version = "8.2.2"
+description = "Retry code until it succeeds"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "tenacity-8.2.2-py3-none-any.whl", hash = "sha256:2f277afb21b851637e8f52e6a613ff08734c347dc19ade928e519d7d2d8569b0"},
+    {file = "tenacity-8.2.2.tar.gz", hash = "sha256:43af037822bd0029025877f3b2d97cc4d7bb0c2991000a3d59d71517c5c969e0"},
+]
+
+[package.extras]
+doc = ["reno", "sphinx", "tornado (>=4.5)"]
+
+[[package]]
 name = "terminado"
 version = "0.17.1"
 description = "Tornado websocket backend for the Xterm.js Javascript terminal emulator library."
@@ -2980,4 +3052,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "~3.11"
-content-hash = "1314f020035eab0662a8da3038b6a0397c97aa23576e746b961f48901fd21ba4"
+content-hash = "3e9929a3e84c26013366360e035ba4d396e29ada2ec356a40afe90b3c09b2e50"
