@@ -161,6 +161,4 @@ cython_debug/
 
 # Repository-specific stuff
 data/
-models/
 wandb/
-results/
