@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "i2r-active-da"
+name = "ethz-ssl-tabular"
 version = "0.1.0"
 description = ""
 authors = ["Ng Wei En <weien1292@gmail.com>"]

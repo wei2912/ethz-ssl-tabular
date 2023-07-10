@@ -1,4 +1,4 @@
-# i2r-active-da
+# ethz-ssl-tabular
 
 ## Installation
 
