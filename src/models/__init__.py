@@ -1,24 +1,14 @@
 import numpy as np
 from sklearn.metrics import top_k_accuracy_score
 
+import abc
 from typing import Dict
 
 
-class BaseModel:
-    SWEEP_CONFIG = None
+class Model(metaclass=abc.ABCMeta):
+    SWEEP_CONFIG: Dict  # WandB sweep config, assumed to be constant
 
-    def fit(
-        self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray, y_val: np.ndarray
-    ) -> Dict:
-        """
-        :param X: training data
-        :param y: labels of training data
-        :param X_val: validation data
-        :param y_val: labels of validation data
-        :return: metrics
-        """
-        raise NotImplementedError()
-
+    @abc.abstractmethod
     def predict_log_proba(self, X: np.ndarray) -> np.ndarray:
         """
         :param X: test data
@@ -26,5 +16,57 @@ class BaseModel:
         """
         raise NotImplementedError()
 
+    @abc.abstractmethod
+    def val(self, X_val: np.ndarray, y_val: np.ndarray) -> Dict:
+        """
+        :param X_val: validation data
+        :param y_val: labels of validation data
+        :return: validation metrics
+        """
+        raise NotImplementedError()
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        """
+        :param X: test data
+        :return: class predictions
+        """
+        return self.predict_log_proba(X).argmax(axis=1)
+
     def top_1_acc(self, X: np.ndarray, y: np.ndarray) -> float:
-        return top_k_accuracy_score(y, self.predict_log_proba(X), k=1)
+        return top_k_accuracy_score(y, self.predict(X), k=1)
+
+
+class SLModel(Model):
+    def __init__(self):
+        super().__init__()
+
+    @abc.abstractmethod
+    def train(self, X_train: np.ndarray, y_train: np.ndarray, **kwargs: Dict) -> Dict:
+        """
+        :param X_train: training data
+        :param y_train: labels of training data
+        :param kwargs: additional arguments
+        :return: training metrics
+        """
+        raise NotImplementedError()
+
+
+class SemiSLModel(Model):
+    def __init__(self):
+        super().__init__()
+
+    @abc.abstractmethod
+    def train_ssl(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_train_ul: np.ndarray,
+        **kwargs: Dict
+    ) -> Dict:
+        """
+        :param X_train: training data
+        :param y_train: labels of training data
+        :param X_train_ul: training data (unlabelled)
+        :return: metrics
+        """
+        raise NotImplementedError()

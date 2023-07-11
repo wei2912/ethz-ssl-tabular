@@ -3,39 +3,46 @@ from sklearn.ensemble import RandomForestClassifier
 
 from typing import Dict
 
-from . import BaseModel
+from . import SLModel
 
 
-class RandomForestModel(BaseModel):
-    SWEEP_CONFIG = {
-        "method": "random",
-        "metric": {"goal": "minimize", "name": "train.acc"},
-        "parameters": {
-            "n_estimators": {
-                "min": 5,
-                "max": 100,
-                "distribution": "q_log_uniform_values",
-            },
-            "max_depth": {"min": 2, "max": 12, "distribution": "q_log_uniform_values"},
-        },
-    }
-
+class RandomForestModel(SLModel):
     def __init__(self):
         super().__init__()
+        self.SWEEP_CONFIG = {
+            "method": "random",
+            "metric": {"goal": "maximize", "name": "val.acc"},
+            "parameters": {
+                "n_estimators": {
+                    "min": 5,
+                    "max": 100,
+                    "distribution": "q_log_uniform_values",
+                },
+                "max_depth": {
+                    "min": 2,
+                    "max": 12,
+                    "distribution": "q_log_uniform_values",
+                },
+            },
+        }
 
-    def fit(
+    def train(
         self,
-        X: np.ndarray,
-        y: np.ndarray,
-        X_val: np.ndarray,
-        y_val: np.ndarray,
-        **config: Dict
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        n_estimators: int = 100,
+        max_depth: int = None,
+        **_,
     ) -> Dict:
         model = RandomForestClassifier(
-            n_estimators=config.n_estimators, max_depth=config.max_depth, n_jobs=-1
+            n_estimators=n_estimators, max_depth=max_depth, n_jobs=-1
         )
-        self.model = model.fit(X, y)
-        return {"val.acc": self.top_1_acc(X_val, y_val)}
+        self.model = model.fit(X_train, y_train)
+        return {"acc": self.top_1_acc(X_train, y_train)}
 
     def predict_log_proba(self, X: np.ndarray) -> np.ndarray:
-        return self.model.predict_log_proba(X)
+        with np.errstate(divide="ignore"):
+            return self.model.predict_log_proba(X)
+
+    def val(self, X_val: np.ndarray, y_val: np.ndarray) -> Dict:
+        return {"acc": self.top_1_acc(X_val, y_val)}
