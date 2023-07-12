@@ -28,9 +28,27 @@ L_UL_SPLITS: List[Tuple[float, float]] = list(
     )
 )
 
-OPENML_SUITE_ID: int = 337  # classification on numerical features
 # see https://github.com/LeoGrin/tabular-benchmark
-SUITE = openml.study.get_suite(OPENML_SUITE_ID)
+# tasks are taken from the suite for "classification on numerical features"
+# SUITE = openml.study.get_suite(337)
+TASKS: List[int] = [
+    361055,
+    361060,
+    361061,
+    361062,
+    361063,
+    361065,
+    361066,
+    361068,
+    361069,
+    361070,
+    361273,
+    361274,
+    361275,
+    361276,
+    361277,
+    361278,
+]
 
 
 def preload_data(args: argparse.Namespace) -> None:
@@ -172,14 +190,12 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers(required=True)
 
     parser_preload_data = subparsers.add_parser("preload_data")
-    parser_preload_data.add_argument(
-        "--tasks", type=int, nargs="*", choices=SUITE.tasks
-    )
+    parser_preload_data.add_argument("--tasks", type=int, nargs="*", choices=TASKS)
     parser_preload_data.set_defaults(func=preload_data)
 
     parser_run = subparsers.add_parser("run")
     parser_run.add_argument("--entity", type=str, required=True)
-    parser_run.add_argument("--tasks", type=int, nargs="*", choices=SUITE.tasks)
+    parser_run.add_argument("--tasks", type=int, nargs="*", choices=TASKS)
     parser_run.add_argument("--models", type=str, nargs="*", choices=MODELS.keys())
     parser_run.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
     parser_run.set_defaults(func=main)
