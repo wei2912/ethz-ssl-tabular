@@ -157,7 +157,7 @@ def main(args: argparse.Namespace) -> None:
                             "ul_split": None,
                         }
                     )
-                    train_metrics = model.train_sl(X_train, y_train, **wandb.config)
+                    train_metrics = model.train(X_train, y_train, **wandb.config)
                     val_metrics = model.val(X_val, y_val)
                     wandb.log({"train": train_metrics, "val": val_metrics})
                     wandb.finish()
