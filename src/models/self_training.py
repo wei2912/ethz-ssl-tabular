@@ -5,7 +5,7 @@ from typing import Callable, Dict
 from . import SemiSLModel, SLModel
 
 
-class PseudolabelModel(SemiSLModel):
+class WastefulSemiSLModel(SemiSLModel):
     def __init__(self, base_model_fn: Callable[[], SLModel]):
         """
         :param base_model_fn: constructor for base supervised learning (SL) model, used

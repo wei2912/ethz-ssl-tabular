@@ -31,7 +31,7 @@ class RandomForestModel(SLModel):
         X_train: np.ndarray,
         y_train: np.ndarray,
         n_estimators: int = 100,
-        max_depth: int = None,
+        max_depth: int = 12,
         **_,
     ) -> Dict:
         model = RandomForestClassifier(
