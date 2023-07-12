@@ -22,16 +22,16 @@ SEED: int = 123456
 UL_SPLITS: List[float] = [0.999, 0.995, 0.99, 0.9, 0.7, 0.5, 0.3, 0.1]
 VAL_SPLIT: float = 0.1
 
+SUITE = openml.study.get_suite(OPENML_SUITE_ID)
 
-def main(*, models: List[str], entity: str, project_name: str):
+
+def main(*, tasks: List[str], models: List[str], entity: str, prefix: str):
     os.environ["WANDB_SILENT"] = "true"
 
     if len(models) == 0:
         print("No models were specified; exiting.")
 
-    suite = openml.study.get_suite(OPENML_SUITE_ID)
-
-    for task_id in suite.tasks[:3]:  # FIXME
+    for task_id in tasks:
         task = openml.tasks.get_task(task_id, download_splits=True)
         dataset = task.get_dataset()
         X, y, _, _ = dataset.get_data(target=dataset.default_target_attribute)
@@ -61,13 +61,7 @@ def main(*, models: List[str], entity: str, project_name: str):
                 model = MODELS[model_name]()
 
                 def run_fn():
-                    wandb.init(
-                        config={
-                            "model": model_name,
-                            "task": task_id,
-                            "ul_split": ul_split,
-                        }
-                    )
+                    wandb.init(config={"model": model_name, "ul_split": ul_split})
                     train_metrics = model.train_ssl(
                         X_train, y_train, X_train_ul, **wandb.config
                     )
@@ -75,6 +69,7 @@ def main(*, models: List[str], entity: str, project_name: str):
                     wandb.log({"train": train_metrics, "val": val_metrics})
                     wandb.finish()
 
+                project_name = f"{prefix}{task_id}"
                 sweep_id = wandb.sweep(
                     sweep=model.SWEEP_CONFIG, entity=entity, project=project_name
                 )
@@ -84,7 +79,8 @@ def main(*, models: List[str], entity: str, project_name: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--entity", type=str, required=True)
+    parser.add_argument("--tasks", nargs="*", choices=SUITE.tasks, required=True)
     parser.add_argument("--models", nargs="*", choices=MODELS.keys(), required=True)
-    parser.add_argument("--project-name", type=str, default="ethz-tabular-ssl")
+    parser.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
     args = parser.parse_args()
     main(**vars(args))

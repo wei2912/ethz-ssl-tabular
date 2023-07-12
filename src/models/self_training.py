@@ -8,7 +8,8 @@ from . import SemiSLModel, SLModel
 class PseudolabelModel(SemiSLModel):
     def __init__(self, base_model_fn: Callable[[], SLModel]):
         """
-        :param base_model: base supervised learning model, used for pseudolabelling
+        :param base_model_fn: constructor for base supervised learning (SL) model, used
+        for pseudolabelling
         """
         super().__init__()
         self.model = base_model_fn()
@@ -29,7 +30,8 @@ class PseudolabelModel(SemiSLModel):
 class SelfTrainingModel(SemiSLModel):
     def __init__(self, base_model_fn: Callable[[], SLModel]):
         """
-        :param base_model: base supervised learning model, used for pseudolabelling
+        :param base_model_fn: constructor for base supervised learning (SL) model, used
+        for pseudolabelling
         """
         super().__init__()
         self.pl_model = base_model_fn()
