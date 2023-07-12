@@ -6,28 +6,30 @@ import wandb
 
 import argparse
 import os
-from typing import Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple, Union
 
-from models import SemiSLModel
+from models import SemiSLModel, SLModel
 from models.trees import RandomForestModel
-from models.self_training import WastefulSemiSLModel, SelfTrainingModel
+from models.self_training import SelfTrainingModel
 
-MODELS: Dict[str, Callable[[], SemiSLModel]] = {
-    "random-forest": lambda: WastefulSemiSLModel(RandomForestModel),
+SEED: int = 123456
+MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
+    "random-forest": lambda: RandomForestModel(),
     "random-forest-st": lambda: SelfTrainingModel(RandomForestModel),
 }
 NUM_SWEEP: int = 10
-OPENML_SUITE_ID: int = 337  # classification on numerical features
-# see https://github.com/LeoGrin/tabular-benchmark
-SEED: int = 123456
+
+VAL_SPLIT: float = 0.1
+L_SPLITS: List[float] = [0.1 * (x + 1) for x in range(10)]
 L_UL_SPLITS: List[Tuple[float, float]] = list(
     filter(
         lambda t: t[0] + t[1] <= 1,
         ((0.1 * (x + 1), 0.1 * (y + 1)) for x in range(10) for y in range(10)),
     )
 )
-VAL_SPLIT: float = 0.1
 
+OPENML_SUITE_ID: int = 337  # classification on numerical features
+# see https://github.com/LeoGrin/tabular-benchmark
 SUITE = openml.study.get_suite(OPENML_SUITE_ID)
 
 
@@ -59,9 +61,13 @@ def main(*, tasks: List[int], models: List[str], entity: str, prefix: str):
         print("===")
 
         for model_name in models:
-            print(f"> Model: {model_name}")
 
-            for l_split, ul_split in tqdm(L_UL_SPLITS):
+            def sweep_semisl(
+                l_split: float, ul_split: float
+            ) -> Tuple[Dict[str, Any], Callable[[], None]]:
+                model = MODELS[model_name]()
+                assert isinstance(model, SemiSLModel)
+
                 X_train, X_train_ul, y_train, _ = train_test_split(
                     X_train_full,
                     y_train_full,
@@ -73,7 +79,6 @@ def main(*, tasks: List[int], models: List[str], entity: str, prefix: str):
                     f">> L/UL Split: {len(X_train)}/{len(X_train_ul)} "
                     f"({l_split}/{ul_split})"
                 )
-                model = MODELS[model_name]()
 
                 def run_fn():
                     wandb.init(
@@ -90,11 +95,54 @@ def main(*, tasks: List[int], models: List[str], entity: str, prefix: str):
                     wandb.log({"train": train_metrics, "val": val_metrics})
                     wandb.finish()
 
-                project_name = f"{prefix}{task_id}"
-                sweep_id = wandb.sweep(
-                    sweep=model.SWEEP_CONFIG, entity=entity, project=project_name
+                return (model.SWEEP_CONFIG, run_fn)
+
+            def sweep_sl(l_split: float) -> Tuple[Dict[str, Any], Callable[[], None]]:
+                model = MODELS[model_name]()
+                assert isinstance(model, SLModel)
+
+                X_train, _, y_train, _ = train_test_split(
+                    X_train_full,
+                    y_train_full,
+                    train_size=l_split,
+                    random_state=SEED + 1,
                 )
-                wandb.agent(sweep_id, function=run_fn, count=NUM_SWEEP)
+                print(f">> L Split: {len(X_train)} ({l_split})")
+
+                def run_fn():
+                    wandb.init(
+                        config={
+                            "model": model_name,
+                            "l_split": l_split,
+                            "ul_split": None,
+                        }
+                    )
+                    train_metrics = model.train_sl(X_train, y_train, **wandb.config)
+                    val_metrics = model.val(X_val, y_val)
+                    wandb.log({"train": train_metrics, "val": val_metrics})
+                    wandb.finish()
+
+                return (model.SWEEP_CONFIG, run_fn)
+
+            print(f"> Model: {model_name}")
+            project_name = f"{prefix}{task_id}"
+
+            if isinstance(MODELS[model_name](), SLModel):
+                for l_split in tqdm(L_SPLITS):
+                    sweep_config, run_fn = sweep_sl(l_split)
+                    sweep_id = wandb.sweep(
+                        sweep=sweep_config, entity=entity, project=project_name
+                    )
+                    wandb.agent(sweep_id, function=run_fn, count=NUM_SWEEP)
+            elif isinstance(MODELS[model_name](), SemiSLModel):
+                for l_split, ul_split in tqdm(L_UL_SPLITS):
+                    sweep_config, run_fn = sweep_semisl(l_split, ul_split)
+                    sweep_id = wandb.sweep(
+                        sweep=sweep_config, entity=entity, project=project_name
+                    )
+                    wandb.agent(sweep_id, function=run_fn, count=NUM_SWEEP)
+            else:
+                raise NotImplementedError("model type not supported")
 
 
 if __name__ == "__main__":

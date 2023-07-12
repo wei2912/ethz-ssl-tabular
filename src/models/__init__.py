@@ -5,7 +5,7 @@ import abc
 from typing import Dict
 
 
-class Model(metaclass=abc.ABCMeta):
+class Model(abc.ABC):
     SWEEP_CONFIG: Dict  # WandB sweep config, assumed to be constant
 
     @abc.abstractmethod
