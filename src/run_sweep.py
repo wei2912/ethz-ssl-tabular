@@ -79,8 +79,12 @@ def main(*, tasks: List[str], models: List[str], entity: str, prefix: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--entity", type=str, required=True)
-    parser.add_argument("--tasks", nargs="*", choices=SUITE.tasks, required=True)
-    parser.add_argument("--models", nargs="*", choices=MODELS.keys(), required=True)
+    parser.add_argument(
+        "--tasks", type=int, nargs="*", choices=SUITE.tasks, required=True
+    )
+    parser.add_argument(
+        "--models", type=str, nargs="*", choices=MODELS.keys(), required=True
+    )
     parser.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
     args = parser.parse_args()
     main(**vars(args))
