@@ -33,19 +33,33 @@ OPENML_SUITE_ID: int = 337  # classification on numerical features
 SUITE = openml.study.get_suite(OPENML_SUITE_ID)
 
 
-def preload_data(tasks: List[int], **_) -> None:
+def preload_data(args: argparse.Namespace) -> None:
+    tasks: List[int] = args.tasks
+
+    if not tasks:
+        print("No tasks were specified; exiting.")
+        return
+
     for task_id in tasks:
         task = openml.tasks.get_task(task_id, download_splits=True)
         task.get_dataset()
 
 
-def main(tasks: List[int], models: List[str], entity: str, prefix: str, **_) -> None:
-    os.environ["WANDB_SILENT"] = "true"
+def main(args: argparse.Namespace) -> None:
+    tasks: List[int]
+    models: List[str]
+    entity: str
+    prefix: str
+    tasks, models, entity, prefix = args.tasks, args.models, args.entity, args.prefix
 
     if not models:
-        print("No models were specified; exiting.")
+        print("No models were speecified; exiting.")
+        return
     if not tasks:
         print("No tasks were specified; exiting.")
+        return
+
+    os.environ["WANDB_SILENT"] = "true"
 
     for task_id in tasks:
         task = openml.tasks.get_task(task_id, download_splits=True)
@@ -155,19 +169,20 @@ def main(tasks: List[int], models: List[str], entity: str, prefix: str, **_) -> 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--entity", type=str, required=True)
-    parser.add_argument("--tasks", type=int, nargs="*", choices=SUITE.tasks)
-    parser.add_argument("--models", type=str, nargs="*", choices=MODELS.keys())
-    parser.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
-    parser.add_argument(
-        "--preload-data",
-        default=False,
-        action=argparse.BooleanOptionalAction,
-        help="only preload data from OpenML without running experiments",
-    )
-    args = parser.parse_args()
+    subparsers = parser.add_subparsers(required=True)
 
-    if args.preload_data:
-        preload_data(**vars(args))
-    else:
-        main(**vars(args))
+    parser_preload_data = subparsers.add_parser("preload_data")
+    parser_preload_data.add_argument(
+        "--tasks", type=int, nargs="*", choices=SUITE.tasks
+    )
+    parser_preload_data.set_defaults(func=preload_data)
+
+    parser_run = subparsers.add_parser("run")
+    parser_run.add_argument("--entity", type=str, required=True)
+    parser_run.add_argument("--tasks", type=int, nargs="*", choices=SUITE.tasks)
+    parser_run.add_argument("--models", type=str, nargs="*", choices=MODELS.keys())
+    parser_run.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
+    parser_run.set_defaults(func=main)
+
+    args = parser.parse_args()
+    args.func(args)
