@@ -33,11 +33,19 @@ OPENML_SUITE_ID: int = 337  # classification on numerical features
 SUITE = openml.study.get_suite(OPENML_SUITE_ID)
 
 
-def main(*, tasks: List[int], models: List[str], entity: str, prefix: str):
+def preload_data(tasks: List[int], **_) -> None:
+    for task_id in tasks:
+        task = openml.tasks.get_task(task_id, download_splits=True)
+        task.get_dataset()
+
+
+def main(tasks: List[int], models: List[str], entity: str, prefix: str, **_) -> None:
     os.environ["WANDB_SILENT"] = "true"
 
-    if len(models) == 0:
+    if not models:
         print("No models were specified; exiting.")
+    if not tasks:
+        print("No tasks were specified; exiting.")
 
     for task_id in tasks:
         task = openml.tasks.get_task(task_id, download_splits=True)
@@ -148,12 +156,18 @@ def main(*, tasks: List[int], models: List[str], entity: str, prefix: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--entity", type=str, required=True)
-    parser.add_argument(
-        "--tasks", type=int, nargs="*", choices=SUITE.tasks, required=True
-    )
-    parser.add_argument(
-        "--models", type=str, nargs="*", choices=MODELS.keys(), required=True
-    )
+    parser.add_argument("--tasks", type=int, nargs="*", choices=SUITE.tasks)
+    parser.add_argument("--models", type=str, nargs="*", choices=MODELS.keys())
     parser.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
+    parser.add_argument(
+        "--preload-data",
+        default=False,
+        action=argparse.BooleanOptionalAction,
+        help="only preload data from OpenML without running experiments",
+    )
     args = parser.parse_args()
-    main(**vars(args))
+
+    if args.preload_data:
+        preload_data(**vars(args))
+    else:
+        main(**vars(args))
