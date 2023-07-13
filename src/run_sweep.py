@@ -71,7 +71,7 @@ def main(args: argparse.Namespace) -> None:
     tasks, models, entity, prefix = args.tasks, args.models, args.entity, args.prefix
 
     if not models:
-        print("No models were speecified; exiting.")
+        print("No models were specified; exiting.")
         return
     if not tasks:
         print("No tasks were specified; exiting.")
@@ -105,16 +105,23 @@ def main(args: argparse.Namespace) -> None:
             def sweep_semisl(
                 l_split: float, ul_split: float
             ) -> Tuple[Dict[str, Any], Callable[[], None]]:
+                assert l_split > 0.0
+                assert ul_split >= 0.0
+                assert l_split + ul_split <= 1.0
+
                 model = MODELS[model_name]()
                 assert isinstance(model, SemiSLModel)
 
-                X_train, X_train_ul, y_train, _ = train_test_split(
-                    X_train_full,
-                    y_train_full,
-                    train_size=l_split,
-                    test_size=ul_split,
-                    random_state=SEED + 1,
-                )
+                if l_split == 1.0:
+                    X_train, X_train_ul, y_train = X_train_full, None, y_train_full
+                else:
+                    X_train, X_train_ul, y_train, _ = train_test_split(
+                        X_train_full,
+                        y_train_full,
+                        train_size=l_split,
+                        test_size=ul_split,
+                        random_state=SEED + 1,
+                    )
                 print(
                     f">> L/UL Split: {len(X_train)}/{len(X_train_ul)} "
                     f"({l_split}/{ul_split})"
@@ -138,15 +145,21 @@ def main(args: argparse.Namespace) -> None:
                 return (model.SWEEP_CONFIG, run_fn)
 
             def sweep_sl(l_split: float) -> Tuple[Dict[str, Any], Callable[[], None]]:
+                assert l_split > 0.0
+                assert l_split <= 1.0
+
                 model = MODELS[model_name]()
                 assert isinstance(model, SLModel)
 
-                X_train, _, y_train, _ = train_test_split(
-                    X_train_full,
-                    y_train_full,
-                    train_size=l_split,
-                    random_state=SEED + 1,
-                )
+                if l_split == 1.0:
+                    X_train, y_train = X_train_full, y_train_full
+                else:
+                    X_train, _, y_train, _ = train_test_split(
+                        X_train_full,
+                        y_train_full,
+                        train_size=l_split,
+                        random_state=SEED + 1,
+                    )
                 print(f">> L Split: {len(X_train)} ({l_split})")
 
                 def run_fn():
@@ -190,13 +203,19 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers(required=True)
 
     parser_preload_data = subparsers.add_parser("preload_data")
-    parser_preload_data.add_argument("--tasks", type=int, nargs="*", choices=TASKS)
+    parser_preload_data.add_argument(
+        "--tasks", type=int, nargs="*", choices=TASKS, required=True
+    )
     parser_preload_data.set_defaults(func=preload_data)
 
     parser_run = subparsers.add_parser("run")
     parser_run.add_argument("--entity", type=str, required=True)
-    parser_run.add_argument("--tasks", type=int, nargs="*", choices=TASKS)
-    parser_run.add_argument("--models", type=str, nargs="*", choices=MODELS.keys())
+    parser_run.add_argument(
+        "--tasks", type=int, nargs="*", choices=TASKS, required=True
+    )
+    parser_run.add_argument(
+        "--models", type=str, nargs="*", choices=MODELS.keys(), required=True
+    )
     parser_run.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
     parser_run.set_defaults(func=main)
 

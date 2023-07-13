@@ -1,6 +1,6 @@
 import numpy as np
 
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
 
 from . import SemiSLModel, SLModel
 
@@ -20,10 +20,13 @@ class SelfTrainingModel(SemiSLModel):
         self,
         X_train: np.ndarray,
         y_train: np.ndarray,
-        X_train_ul: np.ndarray,
+        X_train_ul: Optional[np.ndarray],
         **kwargs: Dict
     ) -> Dict:
-        self.pl_model.train(X_train, y_train)
+        if not X_train_ul:
+            return self.new_model.train(X_train, y_train, **kwargs)
+
+        self.pl_model.train(X_train, y_train, **kwargs)
         y_train_pl: np.ndarray = self.pl_model.predict(X_train_ul)
         X_train_new, y_train_new = np.concatenate(
             (X_train, X_train_ul)

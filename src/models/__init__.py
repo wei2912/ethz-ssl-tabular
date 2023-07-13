@@ -2,7 +2,7 @@ import numpy as np
 from sklearn.metrics import top_k_accuracy_score
 
 import abc
-from typing import Dict
+from typing import Dict, Optional
 
 
 class Model(abc.ABC):
@@ -60,7 +60,7 @@ class SemiSLModel(Model):
         self,
         X_train: np.ndarray,
         y_train: np.ndarray,
-        X_train_ul: np.ndarray,
+        X_train_ul: Optional[np.ndarray],
         **kwargs: Dict
     ) -> Dict:
         """
