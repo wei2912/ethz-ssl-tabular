@@ -23,7 +23,7 @@ class SelfTrainingModel(SemiSLModel):
         X_train_ul: Optional[np.ndarray],
         **kwargs: Dict
     ) -> Dict:
-        if not X_train_ul:
+        if X_train_ul is None:
             return self.new_model.train(X_train, y_train, **kwargs)
 
         self.pl_model.train(X_train, y_train, **kwargs)

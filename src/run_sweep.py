@@ -6,26 +6,26 @@ import wandb
 
 import argparse
 import os
+import itertools
 from typing import Any, Callable, Dict, List, Tuple, Union
 
 from models import SemiSLModel, SLModel
-from models.trees import RandomForestModel
+from models.trees import GBTModel, RandomForestModel
 from models.self_training import SelfTrainingModel
 
 SEED: int = 123456
 MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
     "random-forest": lambda: RandomForestModel(),
     "random-forest-st": lambda: SelfTrainingModel(RandomForestModel),
+    "gbt": lambda: GBTModel(),
+    "gbt-st": lambda: SelfTrainingModel(GBTModel),
 }
-NUM_SWEEP: int = 10
+NUM_SWEEP: int = 20
 
 VAL_SPLIT: float = 0.1
-L_SPLITS: List[float] = [0.1 * (x + 1) for x in range(10)]
+L_SPLITS: List[float] = [0.1] + [0.2 * (x + 1) for x in range(4)] + [0.9] + [1.0]
 L_UL_SPLITS: List[Tuple[float, float]] = list(
-    filter(
-        lambda t: t[0] + t[1] <= 1,
-        ((0.1 * (x + 1), 0.1 * (y + 1)) for x in range(10) for y in range(10)),
-    )
+    filter(lambda t: t[0] + t[1] <= 1, itertools.product(L_SPLITS, L_SPLITS))
 )
 
 # see https://github.com/LeoGrin/tabular-benchmark
@@ -167,7 +167,7 @@ def main(args: argparse.Namespace) -> None:
                         config={
                             "model": model_name,
                             "l_split": l_split,
-                            "ul_split": None,
+                            "ul_split": 0,
                         }
                     )
                     train_metrics = model.train(X_train, y_train, **wandb.config)
