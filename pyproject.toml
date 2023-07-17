@@ -19,6 +19,7 @@ numpy = "^1.24.3"
 pandas = "^2.0.1"
 plotly = "^5.14.1"
 openml = "^0.14.0"
+optuna = "^3.2.0"
 
 [tool.poetry.group.dev.dependencies]
 black = {extras = ["jupyter"], version = "^23.3.0"}

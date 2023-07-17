@@ -1,13 +1,12 @@
 import numpy as np
+from optuna.trial import Trial
 from sklearn.metrics import top_k_accuracy_score
 
 import abc
-from typing import Dict, Optional
+from typing import Any, Dict, Tuple
 
 
 class Model(abc.ABC):
-    SWEEP_CONFIG: Dict  # WandB sweep config, assumed to be constant
-
     @abc.abstractmethod
     def predict_log_proba(self, X: np.ndarray) -> np.ndarray:
         """
@@ -16,20 +15,7 @@ class Model(abc.ABC):
         """
         raise NotImplementedError()
 
-    @abc.abstractmethod
-    def val(self, X_val: np.ndarray, y_val: np.ndarray) -> Dict:
-        """
-        :param X_val: validation data
-        :param y_val: labels of validation data
-        :return: validation metrics
-        """
-        raise NotImplementedError()
-
     def predict(self, X: np.ndarray) -> np.ndarray:
-        """
-        :param X: test data
-        :return: class predictions
-        """
         return self.predict_log_proba(X).argmax(axis=1)
 
     def top_1_acc(self, X: np.ndarray, y: np.ndarray) -> float:
@@ -41,12 +27,22 @@ class SLModel(Model):
         super().__init__()
 
     @abc.abstractmethod
-    def train(self, X_train: np.ndarray, y_train: np.ndarray, **kwargs: Dict) -> Dict:
+    def train(
+        self,
+        trial: Trial,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_val: np.ndarray,
+        y_val: np.ndarray,
+    ) -> Tuple[float, Dict[str, Any]]:
         """
+        :param run: WandB run object
+        :param trial: Optuna trial object
         :param X_train: training data
         :param y_train: labels of training data
-        :param kwargs: additional arguments
-        :return: training metrics
+        :param X_val: validation data
+        :param y_val: labels of validation data
+        :return: objective score
         """
         raise NotImplementedError()
 
@@ -58,15 +54,21 @@ class SemiSLModel(Model):
     @abc.abstractmethod
     def train_ssl(
         self,
+        trial: Trial,
         X_train: np.ndarray,
         y_train: np.ndarray,
-        X_train_ul: Optional[np.ndarray],
-        **kwargs: Dict
-    ) -> Dict:
+        X_train_ul: np.ndarray,
+        X_val: np.ndarray,
+        y_val: np.ndarray,
+    ) -> Tuple[float, Dict[str, Any]]:
         """
+        :param run: WandB run object
+        :param trial: Optuna trial object
         :param X_train: training data
         :param y_train: labels of training data
         :param X_train_ul: training data (unlabelled)
-        :return: metrics
+        :param X_val: validation data
+        :param y_val: labels of validation data
+        :return: objective score
         """
         raise NotImplementedError()
