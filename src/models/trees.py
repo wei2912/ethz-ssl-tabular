@@ -1,6 +1,6 @@
 import numpy as np
 from optuna.trial import Trial
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
 
 from typing import Any, Dict, Tuple
 
@@ -20,6 +20,9 @@ class RandomForestModel(SLModel):
         y_val: np.ndarray,
     ) -> Tuple[float, Dict[str, Any]]:
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
+        # FIXME
+        # max_depth = trial.suggest_categorical("max_depth", [5])
+        # n_estimators = trial.suggest_categorical("n_estimators", [100])
         max_depth = trial.suggest_categorical("max_depth", [None, 2, 3, 4, 5])
         n_estimators = trial.suggest_int("n_estimators", 9, 3000, log=True)
 
@@ -37,7 +40,7 @@ class RandomForestModel(SLModel):
             return self.model.predict_log_proba(X)
 
 
-class GBTModel(SLModel):
+class HGBTModel(SLModel):
     def __init__(self):
         super().__init__()
 
@@ -50,16 +53,18 @@ class GBTModel(SLModel):
         y_val: np.ndarray,
     ) -> Tuple[float, Dict[str, Any]]:
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
+        # FIXME
+        # learning_rate = trial.suggest_categorical("learning_rate", [.03])
+        # max_depth = trial.suggest_categorical("max_depth", [None])
+        # max_iter = trial.suggest_categorical("max_iter", [300])
         learning_rate = trial.suggest_float("learning_rate", 0.01, 10, log=True)
-        subsample = trial.suggest_float("subsample", 0.5, 1.0)
-        n_estimators = trial.suggest_int("n_estimators", 9, 3000, log=True)
         max_depth = trial.suggest_categorical("max_depth", [None, 2, 3, 4, 5])
+        max_iter = trial.suggest_int("max_iter", 10, 1000, log=True)
 
-        model = GradientBoostingClassifier(
+        model = HistGradientBoostingClassifier(
             learning_rate=learning_rate,
-            subsample=subsample,
-            n_estimators=n_estimators,
             max_depth=max_depth,
+            max_iter=max_iter,
         )
         self.model = model.fit(X_train, y_train)
 
@@ -69,4 +74,4 @@ class GBTModel(SLModel):
 
     def predict_log_proba(self, X: np.ndarray) -> np.ndarray:
         with np.errstate(divide="ignore"):
-            return self.model.predict_log_proba(X)
+            return np.log(self.model.predict_proba(X))

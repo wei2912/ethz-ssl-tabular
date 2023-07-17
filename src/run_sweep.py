@@ -12,78 +12,96 @@ import itertools
 from typing import Callable, Dict, List, Tuple, Union
 
 from models import SemiSLModel, SLModel
-from models.trees import GBTModel, RandomForestModel
+from models.trees import HGBTModel, RandomForestModel
 from models.self_training import SelfTrainingModel
 
 SEED: int = 123456
 MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
     "random-forest": lambda: RandomForestModel(),
     "random-forest-st": lambda: SelfTrainingModel(RandomForestModel),
-    "gbt": lambda: GBTModel(),
-    "gbt-st": lambda: SelfTrainingModel(GBTModel),
+    "hgbt": lambda: HGBTModel(),
+    "hgbt-st": lambda: SelfTrainingModel(HGBTModel),
 }
-NUM_SWEEP: int = 20
 
 VAL_SPLIT: float = 0.1
-L_SPLITS: List[float] = [0.001, 0.01, 0.1, 0.3, 0.5, 0.7, 0.9, 0.99, 0.999]
+L_SPLITS: List[float] = [0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.3, 0.5, 1.0]
+UL_SPLITS: List[float] = [
+    0.0005,
+    0.001,
+    0.005,
+    0.01,
+    0.05,
+    0.1,
+    0.3,
+    0.5,
+    0.7,
+    0.9,
+    0.99,
+    0.995,
+    0.999,
+    0.9995,
+    0.9999,
+]
 L_UL_SPLITS: List[Tuple[float, float]] = list(
-    filter(lambda t: t[0] + t[1] <= 1, itertools.product(L_SPLITS, L_SPLITS))
+    filter(lambda t: t[0] + t[1] <= 1, itertools.product(L_SPLITS, UL_SPLITS))
 )
 
-# see https://github.com/LeoGrin/tabular-benchmark
-# tasks are taken from the suite for "classification on numerical features"
-# SUITE = openml.study.get_suite(337)
-TASKS: List[int] = [
-    361055,
-    361060,
-    361061,
-    361062,
-    361063,
-    361065,
-    361066,
-    361068,
-    361069,
-    361070,
-    361273,
-    361274,
-    361275,
-    361276,
-    361277,
-    361278,
+# datasets are taken from https://arxiv.org/pdf/2207.08815.pdf pg. 13
+DATASETS: List[int] = [
+    44120,
+    44121,
+    44122,
+    44123,
+    44124,
+    44125,
+    44126,
+    44127,
+    44128,
+    44129,
+    44130,
+    44131,
+    44089,
+    44090,
+    44091,
 ]
 
 
 def preload_data(args: argparse.Namespace) -> None:
-    tasks: List[int] = args.tasks
+    datasets: List[int] = args.datasets
 
-    if not tasks:
-        print("No tasks were specified; exiting.")
+    if not datasets:
+        print("No datasets were specified; exiting.")
         return
 
-    for task_id in tasks:
-        task = openml.tasks.get_task(task_id, download_splits=True)
-        task.get_dataset()
+    for dataset_id in datasets:
+        openml.datasets.get_dataset(dataset_id)
 
 
 def main(args: argparse.Namespace) -> None:
-    tasks: List[int]
+    datasets: List[int]
     models: List[str]
     entity: str
     prefix: str
-    tasks, models, entity, prefix = args.tasks, args.models, args.entity, args.prefix
+    num_sweep: int
+    datasets, models, entity, prefix, num_sweep = (
+        args.datasets,
+        args.models,
+        args.entity,
+        args.prefix,
+        args.num_sweep,
+    )
 
     if not models:
         print("No models were specified; exiting.")
         return
-    if not tasks:
-        print("No tasks were specified; exiting.")
+    if not datasets:
+        print("No datasets were specified; exiting.")
         return
 
     os.environ["WANDB_SILENT"] = "true"
 
-    for task_id in tasks:
-        task = openml.tasks.get_task(task_id, download_splits=True)
-        dataset = task.get_dataset()
+    for dataset_id in datasets:
+        dataset = openml.datasets.get_dataset(dataset_id)
         X, y, _, _ = dataset.get_data(
             target=dataset.default_target_attribute, dataset_format="dataframe"
         )
@@ -95,7 +113,7 @@ def main(args: argparse.Namespace) -> None:
         )
 
         print("===")
-        print(f"Task ID: {task_id}")
+        print(f"Dataset ID: {dataset_id}")
         print("---")
         print(f"Total: {len(X)}")
         print(f"Training: {len(X_train_full)}")
@@ -166,7 +184,7 @@ def main(args: argparse.Namespace) -> None:
                 return objective_fn
 
             print(f"> Model: {model_name}")
-            project_name = f"{prefix}{task_id}"
+            project_name = f"{prefix}{dataset_id}"
 
             IS_SL_MODEL = isinstance(MODELS[model_name](), SLModel)
             IS_SEMISL_MODEL = isinstance(MODELS[model_name](), SemiSLModel)
@@ -204,7 +222,7 @@ def main(args: argparse.Namespace) -> None:
                     objective_fn = sweep_semisl(wandbc, l_split, ul_split)
                 study.optimize(
                     objective_fn,
-                    n_trials=NUM_SWEEP,
+                    n_trials=num_sweep,
                     show_progress_bar=True,
                     callbacks=[wandbc],
                 )
@@ -226,19 +244,20 @@ if __name__ == "__main__":
 
     parser_preload_data = subparsers.add_parser("preload_data")
     parser_preload_data.add_argument(
-        "--tasks", type=int, nargs="*", choices=TASKS, required=True
+        "--datasets", type=int, nargs="*", choices=DATASETS, required=True
     )
     parser_preload_data.set_defaults(func=preload_data)
 
     parser_run = subparsers.add_parser("run")
     parser_run.add_argument("--entity", type=str, required=True)
     parser_run.add_argument(
-        "--tasks", type=int, nargs="*", choices=TASKS, required=True
+        "--datasets", type=int, nargs="*", choices=DATASETS, required=True
     )
     parser_run.add_argument(
         "--models", type=str, nargs="*", choices=MODELS.keys(), required=True
     )
     parser_run.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
+    parser_run.add_argument("--num-sweep", type=int, default=20)
     parser_run.set_defaults(func=main)
 
     args = parser.parse_args()

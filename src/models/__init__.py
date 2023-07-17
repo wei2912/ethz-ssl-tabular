@@ -1,6 +1,5 @@
 import numpy as np
 from optuna.trial import Trial
-from sklearn.metrics import top_k_accuracy_score
 
 import abc
 from typing import Any, Dict, Tuple
@@ -19,7 +18,8 @@ class Model(abc.ABC):
         return self.predict_log_proba(X).argmax(axis=1)
 
     def top_1_acc(self, X: np.ndarray, y: np.ndarray) -> float:
-        return top_k_accuracy_score(y, self.predict(X), k=1)
+        assert X.shape[0] == y.shape[0]
+        return (y == self.predict(X)).sum() / X.shape[0]
 
 
 class SLModel(Model):
