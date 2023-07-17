@@ -200,7 +200,7 @@ def main(args: argparse.Namespace) -> None:
             else:
                 raise NotImplementedError("model type not supported")
 
-            for split in tqdm(SPLITS, leave=False):
+            for split in tqdm(SPLITS):
                 if IS_SL_MODEL:
                     l_split = split
                     ul_split = 0
