@@ -24,24 +24,28 @@ MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
 }
 
 VAL_SPLIT: float = 0.1
-L_SPLITS: List[float] = [0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.3, 0.5, 1.0]
-UL_SPLITS: List[float] = [
-    0.0005,
-    0.001,
-    0.005,
-    0.01,
-    0.05,
-    0.1,
-    0.3,
-    0.5,
-    0.7,
-    0.9,
-    0.99,
-    0.995,
-    0.999,
-    0.9995,
-    0.9999,
-]
+L_SPLITS: List[float] = reversed(
+    [0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.3, 0.5, 0.7, 1.0]
+)
+UL_SPLITS: List[float] = reversed(
+    [
+        0.0005,
+        0.001,
+        0.005,
+        0.01,
+        0.05,
+        0.1,
+        0.3,
+        0.5,
+        0.7,
+        0.9,
+        0.95,
+        0.99,
+        0.995,
+        0.999,
+        0.9995,
+    ]
+)
 L_UL_SPLITS: List[Tuple[float, float]] = list(
     filter(lambda t: t[0] + t[1] <= 1, itertools.product(L_SPLITS, UL_SPLITS))
 )
