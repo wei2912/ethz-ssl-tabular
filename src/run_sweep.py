@@ -25,7 +25,7 @@ MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
 NUM_SWEEP: int = 20
 
 VAL_SPLIT: float = 0.1
-L_SPLITS: List[float] = [0.1] + [0.2 * (x + 1) for x in range(4)] + [0.9] + [1.0]
+L_SPLITS: List[float] = [0.001, 0.01, 0.1, 0.3, 0.5, 0.7, 0.9, 0.99, 0.999]
 L_UL_SPLITS: List[Tuple[float, float]] = list(
     filter(lambda t: t[0] + t[1] <= 1, itertools.product(L_SPLITS, L_SPLITS))
 )
