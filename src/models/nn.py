@@ -54,8 +54,8 @@ class MLP(nn.Module):
         return self.classifier(x)
 
 
-BATCH_SIZE = 256
-N_ITER = 2000
+BATCH_SIZE = 128
+N_ITER = 5000
 
 
 class MLPModel(SLModel):
@@ -119,7 +119,7 @@ class MLPModel(SLModel):
         lrs = []
         while i < N_ITER:
             train_loss = 0.0
-            for (X_train_b, y_train_b) in train_loader:
+            for X_train_b, y_train_b in train_loader:
                 if i > N_ITER:
                     break
 
@@ -144,7 +144,7 @@ class MLPModel(SLModel):
                 train_losses.append(train_loss)
 
                 val_loss = 0.0
-                for (X_val_b, y_val_b) in val_loader:
+                for X_val_b, y_val_b in val_loader:
                     X_val_b, y_val_b = X_val_b.to(self._device), y_val_b.to(
                         self._device
                     )

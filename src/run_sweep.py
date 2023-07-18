@@ -9,7 +9,7 @@ import wandb
 import argparse
 import os
 import itertools
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Tuple, TypeAlias, Union
 
 from models import SemiSLModel, SLModel
 from models.nn import MLPModel
@@ -26,7 +26,10 @@ MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
     "mlp-st": lambda: SelfTrainingModel(MLPModel),
 }
 
-VAL_SPLIT: float = 0.1
+# following https://arxiv.org/pdf/2207.08815.pdf pg. 19
+TEST_VAL_SPLIT: float = 0.3
+VAL_SPLIT: float = 0.3
+
 SMALL_SPLIT_VALS: List[float] = [0.002 * x for x in range(5, 0, -1)]
 LARGE_SPLIT_VALS: List[float] = [0.2 * x - 0.1 for x in range(5, 0, -1)]
 L_SPLITS: List[float] = [1.0] + LARGE_SPLIT_VALS + SMALL_SPLIT_VALS
@@ -90,8 +93,11 @@ def main(args: argparse.Namespace) -> None:
         assert isinstance(X, pd.DataFrame)
         assert isinstance(y, pd.Series)
         X, y = X.to_numpy(), y.cat.codes.to_numpy()
-        X_train_full, X_val, y_train_full, y_val = train_test_split(
-            X, y, test_size=VAL_SPLIT, random_state=SEED
+        X_train_full, X_test_val, y_train_full, y_test_val = train_test_split(
+            X, y, test_size=TEST_VAL_SPLIT, random_state=SEED
+        )
+        X_test, X_val, y_test, y_val = train_test_split(
+            X_test_val, y_test_val, test_size=VAL_SPLIT, random_state=SEED + 1
         )
 
         print("===")
@@ -100,12 +106,17 @@ def main(args: argparse.Namespace) -> None:
         print("---")
         print(f"Total: {len(X)}")
         print(f"Training: {len(X_train_full)}")
+        print(f"Test: {len(X_test)}")
         print(f"Validation: {len(X_val)}")
         print("===")
 
         for model_name in models:
+            TrainFnType: TypeAlias = Callable[
+                [optuna.trial.Trial], Tuple[float, Dict[str, Any]]
+            ]
+            TestFnType: TypeAlias = Callable[[], Dict[str, Any]]
 
-            def sweep_sl(l_split: float) -> Callable[[], None]:
+            def sweep_sl(l_split: float) -> Tuple[TrainFnType, TestFnType]:
                 assert l_split > 0.0
                 assert l_split <= 1.0
 
@@ -119,18 +130,24 @@ def main(args: argparse.Namespace) -> None:
                         X_train_full,
                         y_train_full,
                         train_size=l_split,
-                        random_state=SEED + 1,
+                        random_state=SEED + 2,
                     )
                 print(f">> L Split: {len(X_train)} ({l_split})")
 
-                def train_fn(trial: optuna.trial.Trial):
+                def train_fn(trial: optuna.trial.Trial) -> Tuple[float, Dict[str, Any]]:
                     return model.train(
                         trial, X_train, y_train, X_val, y_val, is_sweep=(num_sweep > 1)
                     )
 
-                return train_fn
+                def test_fn() -> Dict[str, Any]:
+                    test_acc = model.top_1_acc(X_test, y_test)
+                    return {"acc": test_acc}
 
-            def sweep_semisl(l_split: float, ul_split: float) -> Callable[[], None]:
+                return (train_fn, test_fn)
+
+            def sweep_semisl(
+                l_split: float, ul_split: float
+            ) -> Tuple[TrainFnType, TestFnType]:
                 assert l_split > 0.0
                 assert ul_split >= 0.0
                 assert l_split + ul_split <= 1.0
@@ -153,7 +170,7 @@ def main(args: argparse.Namespace) -> None:
                     f"({l_split:.3}/{ul_split:.3})"
                 )
 
-                def train_fn(trial: optuna.trial.Trial):
+                def train_fn(trial: optuna.trial.Trial) -> Tuple[float, Dict[str, Any]]:
                     return model.train_ssl(
                         trial,
                         X_train,
@@ -164,7 +181,11 @@ def main(args: argparse.Namespace) -> None:
                         is_sweep=(num_sweep > 1),
                     )
 
-                return train_fn
+                def test_fn() -> Dict[str, Any]:
+                    test_acc = model.top_1_acc(X_test, y_test)
+                    return {"acc": test_acc}
+
+                return (train_fn, test_fn)
 
             print(f"> Model: {model_name}")
             project_name = f"{prefix}{dataset_str}"
@@ -199,19 +220,21 @@ def main(args: argparse.Namespace) -> None:
 
                 study = optuna.create_study(direction="maximize")
                 if IS_SL_MODEL:
-                    train_fn = sweep_sl(l_split)
+                    train_fn, test_fn = sweep_sl(l_split)
                 elif IS_SEMISL_MODEL:
-                    train_fn = sweep_semisl(l_split, ul_split)
+                    train_fn, test_fn = sweep_semisl(l_split, ul_split)
 
-                @wandbc.track_in_wandb()
                 def get_score_and_log_metrics(
-                    train_fn: Callable[[optuna.Trial], Tuple[float, Dict[str, Any]]]
+                    train_fn: TrainFnType, test_fn: TestFnType
                 ):
+                    @wandbc.track_in_wandb()
                     def objective_fn(trial: optuna.Trial):
-                        score, metrics = train_fn(trial)
+                        score, run_metrics = train_fn(trial)
+                        test_metrics = test_fn()
                         wandb.log(
                             {
-                                "run": metrics,
+                                "run": run_metrics,
+                                "test": test_metrics,
                                 "number": trial.number,
                                 "params": trial.params,
                                 "value": score,
@@ -222,17 +245,17 @@ def main(args: argparse.Namespace) -> None:
                     return objective_fn
 
                 study.optimize(
-                    get_score_and_log_metrics(train_fn),
+                    get_score_and_log_metrics(train_fn, test_fn),
                     n_trials=num_sweep,
                     show_progress_bar=True,
                     callbacks=[wandbc],
                 )
 
-                wandb.run.summary = {
-                    "number": study.best_trial.number,
-                    "params": study.best_trial.params,
-                    "value": study.best_trial.value,
-                }
+                wandb.run.summary["number"] = study.best_trial.number
+                wandb.run.summary["params"] = study.best_trial.params
+                wandb.run.summary["value"] = study.best_trial.value
+                wandb.run.summary.update()
+
                 wandb.finish()
 
 
