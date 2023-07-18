@@ -40,14 +40,16 @@ L_UL_SPLITS: List[Tuple[float, float]] = list(
 
 # datasets are taken from https://arxiv.org/pdf/2207.08815.pdf pg. 13
 # and https://arxiv.org/pdf/2106.03253.pdf pg. 12
-DATASETS: List[str] = [
-    "jannis",  # 57.5k samples, 55 features, 2 classes
-    "gas-drift-different-concentrations",  # 13.9k samples, 130 features, 6 classes
-]
+DATASETS: Dict[str, int] = {
+    # 57.5k samples, 55 features, 2 classes
+    "jannis": 45021,
+    # 13.9k samples, 130 features, 6 classes
+    "gas-drift-different-concentrations": 1477,
+}
 
 
 def preload_data(_) -> None:
-    for dataset_id in DATASETS:
+    for dataset_id in DATASETS.values():
         openml.datasets.get_dataset(dataset_id)
 
 
@@ -74,7 +76,8 @@ def main(args: argparse.Namespace) -> None:
 
     os.environ["WANDB_SILENT"] = "true"
 
-    for dataset_id in datasets:
+    for dataset_str in datasets:
+        dataset_id = DATASETS[dataset_str]
         dataset = openml.datasets.get_dataset(dataset_id)
         X, y, _, _ = dataset.get_data(
             target=dataset.default_target_attribute, dataset_format="dataframe"
@@ -87,6 +90,7 @@ def main(args: argparse.Namespace) -> None:
         )
 
         print("===")
+        print(f"Dataset: {dataset_str}")
         print(f"Dataset ID: {dataset_id}")
         print("---")
         print(f"Total: {len(X)}")
@@ -229,7 +233,7 @@ if __name__ == "__main__":
     parser_run = subparsers.add_parser("run")
     parser_run.add_argument("--entity", type=str, required=True)
     parser_run.add_argument(
-        "--datasets", type=str, nargs="*", choices=DATASETS, required=True
+        "--datasets", type=str, nargs="*", choices=DATASETS.keys(), required=True
     )
     parser_run.add_argument(
         "--models", type=str, nargs="*", choices=MODELS.keys(), required=True
