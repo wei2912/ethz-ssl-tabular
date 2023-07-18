@@ -31,15 +31,14 @@ class RandomForestModel(SLModel):
         model = RandomForestClassifier(
             max_depth=max_depth, n_estimators=n_estimators, n_jobs=-1
         )
-        self.model = model.fit(X_train, y_train)
+        self._model = model.fit(X_train, y_train)
 
         train_acc = self.top_1_acc(X_train, y_train)
         val_acc = self.top_1_acc(X_val, y_val)
         return (val_acc, {"train": {"acc": train_acc}, "val": {"acc": val_acc}})
 
-    def predict_log_proba(self, X: np.ndarray) -> np.ndarray:
-        with np.errstate(divide="ignore"):
-            return self.model.predict_log_proba(X)
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        return self._model.predict_proba(X)
 
 
 class HGBTModel(SLModel):
@@ -70,12 +69,12 @@ class HGBTModel(SLModel):
             max_depth=max_depth,
             max_iter=max_iter,
         )
-        self.model = model.fit(X_train, y_train)
+        self._model = model.fit(X_train, y_train)
 
         train_acc = self.top_1_acc(X_train, y_train)
         val_acc = self.top_1_acc(X_val, y_val)
         return (val_acc, {"train": {"acc": train_acc}, "val": {"acc": val_acc}})
 
-    def predict_log_proba(self, X: np.ndarray) -> np.ndarray:
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
         with np.errstate(divide="ignore"):
-            return np.log(self.model.predict_proba(X))
+            return self._model.predict_proba(X)

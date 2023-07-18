@@ -12,8 +12,9 @@ import itertools
 from typing import Any, Callable, Dict, List, Tuple, Union
 
 from models import SemiSLModel, SLModel
-from models.trees import HGBTModel, RandomForestModel
+from models.nn import MLPModel
 from models.self_training import SelfTrainingModel
+from models.trees import HGBTModel, RandomForestModel
 
 SEED: int = 123456
 MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
@@ -21,11 +22,13 @@ MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
     "random-forest-st": lambda: SelfTrainingModel(RandomForestModel),
     "hgbt": lambda: HGBTModel(),
     "hgbt-st": lambda: SelfTrainingModel(HGBTModel),
+    "mlp": lambda: MLPModel(),
+    "mlp-st": lambda: SelfTrainingModel(MLPModel),
 }
 
 VAL_SPLIT: float = 0.1
 SMALL_SPLIT_VALS: List[float] = [0.002 * x for x in range(5, 0, -1)]
-LARGE_SPLIT_VALS: List[float] = [0.2 * x - 0.1 for x in range(5, 1, -1)]
+LARGE_SPLIT_VALS: List[float] = [0.2 * x - 0.1 for x in range(5, 0, -1)]
 L_SPLITS: List[float] = [1.0] + LARGE_SPLIT_VALS + SMALL_SPLIT_VALS
 L_UL_SPLITS: List[Tuple[float, float]] = list(
     filter(
@@ -86,7 +89,7 @@ def main(args: argparse.Namespace) -> None:
         )
         assert isinstance(X, pd.DataFrame)
         assert isinstance(y, pd.Series)
-        X, y = X.to_numpy(), y.cat.codes
+        X, y = X.to_numpy(), y.cat.codes.to_numpy()
         X_train_full, X_val, y_train_full, y_val = train_test_split(
             X, y, test_size=VAL_SPLIT, random_state=SEED
         )

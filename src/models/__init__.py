@@ -1,5 +1,5 @@
 import numpy as np
-from optuna.trial import Trial
+import optuna
 
 import abc
 from typing import Any, Dict, Tuple
@@ -7,15 +7,15 @@ from typing import Any, Dict, Tuple
 
 class Model(abc.ABC):
     @abc.abstractmethod
-    def predict_log_proba(self, X: np.ndarray) -> np.ndarray:
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
         """
         :param X: test data
-        :return: class log-probabilities
+        :return: class probabilities
         """
         raise NotImplementedError()
 
     def predict(self, X: np.ndarray) -> np.ndarray:
-        return self.predict_log_proba(X).argmax(axis=1)
+        return self.predict_proba(X).argmax(axis=1)
 
     def top_1_acc(self, X: np.ndarray, y: np.ndarray) -> float:
         assert X.shape[0] == y.shape[0]
@@ -29,7 +29,7 @@ class SLModel(Model):
     @abc.abstractmethod
     def train(
         self,
-        trial: Trial,
+        trial: optuna.trial.Trial,
         X_train: np.ndarray,
         y_train: np.ndarray,
         X_val: np.ndarray,
@@ -55,7 +55,7 @@ class SemiSLModel(Model):
     @abc.abstractmethod
     def train_ssl(
         self,
-        trial: Trial,
+        trial: optuna.trial.Trial,
         X_train: np.ndarray,
         y_train: np.ndarray,
         X_train_ul: np.ndarray,
