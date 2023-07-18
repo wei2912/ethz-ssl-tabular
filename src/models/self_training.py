@@ -24,17 +24,22 @@ class SelfTrainingModel(SemiSLModel):
         X_train_ul: np.ndarray,
         X_val: np.ndarray,
         y_val: np.ndarray,
+        is_sweep: bool = True,
     ) -> Tuple[float, Dict[str, Any]]:
         if X_train_ul is None:
-            return self.new_model.train(trial, X_train, y_train, X_val, y_val)
+            return self.new_model.train(
+                trial, X_train, y_train, X_val, y_val, is_sweep=is_sweep
+            )
 
-        _, pl_metrics_dict = self.pl_model.train(trial, X_train, y_train, X_val, y_val)
+        _, pl_metrics_dict = self.pl_model.train(
+            trial, X_train, y_train, X_val, y_val, is_sweep=is_sweep
+        )
         y_train_pl = self.pl_model.predict(X_train_ul)
         X_train_new, y_train_new = np.concatenate(
             (X_train, X_train_ul)
         ), np.concatenate((y_train, y_train_pl))
         score, new_metrics_dict = self.new_model.train(
-            trial, X_train_new, y_train_new, X_val, y_val
+            trial, X_train_new, y_train_new, X_val, y_val, is_sweep=is_sweep
         )
         return (score, {"pl": pl_metrics_dict, **new_metrics_dict})
 

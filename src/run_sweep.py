@@ -47,38 +47,20 @@ L_UL_SPLITS: List[Tuple[float, float]] = list(
 )
 
 # datasets are taken from https://arxiv.org/pdf/2207.08815.pdf pg. 13
-DATASETS: List[int] = [
-    44120,
-    44121,
-    44122,
-    44123,
-    44124,
-    44125,
-    44126,
-    44127,
-    44128,
-    44129,
-    44130,
-    44131,
-    44089,
-    44090,
-    44091,
+# and https://arxiv.org/pdf/2106.03253.pdf pg. 12
+DATASETS: List[str] = [
+    "jannis",  # 57.5k samples, 55 features, 2 classes
+    "gas-drift-different-concentrations",  # 13.9k samples, 130 features, 6 classes
 ]
 
 
-def preload_data(args: argparse.Namespace) -> None:
-    datasets: List[int] = args.datasets
-
-    if not datasets:
-        print("No datasets were specified; exiting.")
-        return
-
-    for dataset_id in datasets:
+def preload_data() -> None:
+    for dataset_id in DATASETS:
         openml.datasets.get_dataset(dataset_id)
 
 
 def main(args: argparse.Namespace) -> None:
-    datasets: List[int]
+    datasets: List[str]
     models: List[str]
     entity: str
     prefix: str
@@ -250,15 +232,12 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers(required=True)
 
     parser_preload_data = subparsers.add_parser("preload_data")
-    parser_preload_data.add_argument(
-        "--datasets", type=int, nargs="*", choices=DATASETS, required=True
-    )
     parser_preload_data.set_defaults(func=preload_data)
 
     parser_run = subparsers.add_parser("run")
     parser_run.add_argument("--entity", type=str, required=True)
     parser_run.add_argument(
-        "--datasets", type=int, nargs="*", choices=DATASETS, required=True
+        "--datasets", type=str, nargs="*", choices=DATASETS, required=True
     )
     parser_run.add_argument(
         "--models", type=str, nargs="*", choices=MODELS.keys(), required=True
