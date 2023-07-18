@@ -24,28 +24,24 @@ MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
 }
 
 VAL_SPLIT: float = 0.1
-L_SPLITS: List[float] = reversed(
-    [0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.3, 0.5, 0.7, 1.0]
-)
-UL_SPLITS: List[float] = reversed(
-    [
-        0.0005,
-        0.001,
-        0.005,
-        0.01,
-        0.05,
-        0.1,
-        0.3,
-        0.5,
-        0.7,
-        0.9,
-        0.95,
-        0.99,
-        0.995,
-        0.999,
-        0.9995,
-    ]
-)
+L_SPLITS: List[float] = [1.0, 0.7, 0.5, 0.3, 0.1, 0.05, 0.01, 0.005, 0.001, 0.0005]
+UL_SPLITS: List[float] = [
+    0.9995,
+    0.999,
+    0.995,
+    0.99,
+    0.95,
+    0.9,
+    0.7,
+    0.5,
+    0.3,
+    0.1,
+    0.05,
+    0.01,
+    0.005,
+    0.001,
+    0.0005,
+]
 L_UL_SPLITS: List[Tuple[float, float]] = list(
     filter(lambda t: t[0] + t[1] <= 1, itertools.product(L_SPLITS, UL_SPLITS))
 )
@@ -146,7 +142,9 @@ def main(args: argparse.Namespace) -> None:
 
                 @wandbc.track_in_wandb()
                 def objective_fn(trial: optuna.trial.Trial):
-                    score, metrics = model.train(trial, X_train, y_train, X_val, y_val)
+                    score, metrics = model.train(
+                        trial, X_train, y_train, X_val, y_val, is_sweep=(num_sweep > 1)
+                    )
                     wandb.log(metrics)
                     return score
 
@@ -180,7 +178,13 @@ def main(args: argparse.Namespace) -> None:
                 @wandbc.track_in_wandb()
                 def objective_fn(trial: optuna.trial.Trial):
                     score, metrics = model.train_ssl(
-                        trial, X_train, y_train, X_train_ul, X_val, y_val
+                        trial,
+                        X_train,
+                        y_train,
+                        X_train_ul,
+                        X_val,
+                        y_val,
+                        is_sweep=(num_sweep > 1),
                     )
                     wandb.log(metrics)
                     return score
@@ -202,8 +206,7 @@ def main(args: argparse.Namespace) -> None:
 
             for split in tqdm(SPLITS):
                 if IS_SL_MODEL:
-                    l_split = split
-                    ul_split = 0
+                    l_split, ul_split = split, 0
                 elif IS_SEMISL_MODEL:
                     l_split, ul_split = split
 

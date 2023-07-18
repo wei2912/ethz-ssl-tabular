@@ -34,6 +34,7 @@ class SLModel(Model):
         y_train: np.ndarray,
         X_val: np.ndarray,
         y_val: np.ndarray,
+        **kwargs: Dict[str, Any],
     ) -> Tuple[float, Dict[str, Any]]:
         """
         :param run: WandB run object
@@ -60,6 +61,7 @@ class SemiSLModel(Model):
         X_train_ul: np.ndarray,
         X_val: np.ndarray,
         y_val: np.ndarray,
+        **kwargs: Dict[str, Any],
     ) -> Tuple[float, Dict[str, Any]]:
         """
         :param run: WandB run object
