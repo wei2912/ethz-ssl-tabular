@@ -1,6 +1,7 @@
 import numpy as np
 from optuna.trial import Trial
 
+import math
 from typing import Any, Callable, Dict, Tuple
 
 from . import SemiSLModel, SLModel
@@ -26,6 +27,15 @@ class SelfTrainingModel(SemiSLModel):
         y_val: np.ndarray,
         is_sweep: bool = True,
     ) -> Tuple[float, Dict[str, Any]]:
+        if not is_sweep:
+            pl_log_threshold = trial.suggest_categorical(
+                "pl_threshold", [math.log(0.9)]
+            )
+        else:
+            pl_log_threshold = trial.suggest_float(
+                "pl_threshold", math.log(0.5), math.log(1.0)
+            )
+
         if X_train_ul is None:
             return self.new_model.train(
                 trial, X_train, y_train, X_val, y_val, is_sweep=is_sweep
@@ -34,14 +44,22 @@ class SelfTrainingModel(SemiSLModel):
         _, pl_metrics_dict = self.pl_model.train(
             trial, X_train, y_train, X_val, y_val, is_sweep=is_sweep
         )
-        y_train_pl = self.pl_model.predict(X_train_ul)
+        y_train_pl_probs = self.pl_model.predict_log_proba(X_train_ul)
+
+        X_train_pl = X_train_ul[y_train_pl_probs[:, 0] >= pl_log_threshold]
+        y_train_pl = y_train_pl_probs.argmax(axis=1)[
+            y_train_pl_probs[:, 0] >= pl_log_threshold
+        ]
         X_train_new, y_train_new = np.concatenate(
-            (X_train, X_train_ul)
+            (X_train, X_train_pl)
         ), np.concatenate((y_train, y_train_pl))
         score, new_metrics_dict = self.new_model.train(
             trial, X_train_new, y_train_new, X_val, y_val, is_sweep=is_sweep
         )
-        return (score, {"pl": pl_metrics_dict, **new_metrics_dict})
+        return (
+            score,
+            {"pl": pl_metrics_dict, "n_pl": len(X_train_pl), **new_metrics_dict},
+        )
 
     def predict_log_proba(self, X: np.ndarray) -> np.ndarray:
         return self.new_model.predict_log_proba(X)

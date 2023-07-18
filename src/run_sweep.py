@@ -24,26 +24,18 @@ MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
 }
 
 VAL_SPLIT: float = 0.1
-L_SPLITS: List[float] = [1.0, 0.7, 0.5, 0.3, 0.1, 0.05, 0.01, 0.005, 0.001, 0.0005]
-UL_SPLITS: List[float] = [
-    0.9995,
-    0.999,
-    0.995,
-    0.99,
-    0.95,
-    0.9,
-    0.7,
-    0.5,
-    0.3,
-    0.1,
-    0.05,
-    0.01,
-    0.005,
-    0.001,
-    0.0005,
-]
+SMALL_SPLIT_VALS: List[float] = [0.002 * x for x in range(5, 0, -1)]
+LARGE_SPLIT_VALS: List[float] = [0.2 * x - 0.1 for x in range(5, 1, -1)]
+L_SPLITS: List[float] = [1.0] + LARGE_SPLIT_VALS + SMALL_SPLIT_VALS
 L_UL_SPLITS: List[Tuple[float, float]] = list(
-    filter(lambda t: t[0] + t[1] <= 1, itertools.product(L_SPLITS, UL_SPLITS))
+    filter(
+        lambda t: t[0] + t[1] <= 1,
+        itertools.chain(
+            itertools.product(LARGE_SPLIT_VALS, LARGE_SPLIT_VALS),
+            itertools.product([0.01], LARGE_SPLIT_VALS),
+            itertools.product(SMALL_SPLIT_VALS, SMALL_SPLIT_VALS),
+        ),
+    )
 )
 
 # datasets are taken from https://arxiv.org/pdf/2207.08815.pdf pg. 13
@@ -154,7 +146,7 @@ def main(args: argparse.Namespace) -> None:
                     )
                 print(
                     f">> L/UL Split: {len(X_train)}/{len(X_train_ul)} "
-                    f"({l_split}/{ul_split})"
+                    f"({l_split:.3}/{ul_split:.3})"
                 )
 
                 @wandbc.track_in_wandb()
