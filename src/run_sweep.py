@@ -46,7 +46,7 @@ DATASETS: List[str] = [
 ]
 
 
-def preload_data() -> None:
+def preload_data(_) -> None:
     for dataset_id in DATASETS:
         openml.datasets.get_dataset(dataset_id)
 
