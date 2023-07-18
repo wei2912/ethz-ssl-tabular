@@ -9,7 +9,7 @@ import wandb
 import argparse
 import os
 import itertools
-from typing import Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Tuple, Union
 
 from models import SemiSLModel, SLModel
 from models.trees import HGBTModel, RandomForestModel
@@ -67,6 +67,8 @@ def main(args: argparse.Namespace) -> None:
         args.num_sweep,
     )
 
+    assert num_sweep > 0
+
     if not models:
         print("No models were specified; exiting.")
         return
@@ -100,7 +102,7 @@ def main(args: argparse.Namespace) -> None:
 
         for model_name in models:
 
-            def sweep_sl(wandbc, l_split: float) -> Callable[[], None]:
+            def sweep_sl(l_split: float) -> Callable[[], None]:
                 assert l_split > 0.0
                 assert l_split <= 1.0
 
@@ -118,19 +120,14 @@ def main(args: argparse.Namespace) -> None:
                     )
                 print(f">> L Split: {len(X_train)} ({l_split})")
 
-                @wandbc.track_in_wandb()
-                def objective_fn(trial: optuna.trial.Trial):
-                    score, metrics = model.train(
+                def train_fn(trial: optuna.trial.Trial):
+                    return model.train(
                         trial, X_train, y_train, X_val, y_val, is_sweep=(num_sweep > 1)
                     )
-                    wandb.log(metrics)
-                    return score
 
-                return objective_fn
+                return train_fn
 
-            def sweep_semisl(
-                wandbc, l_split: float, ul_split: float
-            ) -> Callable[[], None]:
+            def sweep_semisl(l_split: float, ul_split: float) -> Callable[[], None]:
                 assert l_split > 0.0
                 assert ul_split >= 0.0
                 assert l_split + ul_split <= 1.0
@@ -153,9 +150,8 @@ def main(args: argparse.Namespace) -> None:
                     f"({l_split:.3}/{ul_split:.3})"
                 )
 
-                @wandbc.track_in_wandb()
-                def objective_fn(trial: optuna.trial.Trial):
-                    score, metrics = model.train_ssl(
+                def train_fn(trial: optuna.trial.Trial):
+                    return model.train_ssl(
                         trial,
                         X_train,
                         y_train,
@@ -164,13 +160,11 @@ def main(args: argparse.Namespace) -> None:
                         y_val,
                         is_sweep=(num_sweep > 1),
                     )
-                    wandb.log(metrics)
-                    return score
 
-                return objective_fn
+                return train_fn
 
             print(f"> Model: {model_name}")
-            project_name = f"{prefix}{dataset_id}"
+            project_name = f"{prefix}{dataset_str}"
 
             IS_SL_MODEL = isinstance(MODELS[model_name](), SLModel)
             IS_SEMISL_MODEL = isinstance(MODELS[model_name](), SemiSLModel)
@@ -202,24 +196,40 @@ def main(args: argparse.Namespace) -> None:
 
                 study = optuna.create_study(direction="maximize")
                 if IS_SL_MODEL:
-                    objective_fn = sweep_sl(wandbc, l_split)
+                    train_fn = sweep_sl(l_split)
                 elif IS_SEMISL_MODEL:
-                    objective_fn = sweep_semisl(wandbc, l_split, ul_split)
+                    train_fn = sweep_semisl(l_split, ul_split)
+
+                @wandbc.track_in_wandb()
+                def get_score_and_log_metrics(
+                    train_fn: Callable[[optuna.Trial], Tuple[float, Dict[str, Any]]]
+                ):
+                    def objective_fn(trial: optuna.Trial):
+                        score, metrics = train_fn(trial)
+                        wandb.log(
+                            {
+                                "run": metrics,
+                                "number": trial.number,
+                                "params": trial.params,
+                                "value": score,
+                            }
+                        )
+                        return score
+
+                    return objective_fn
+
                 study.optimize(
-                    objective_fn,
+                    get_score_and_log_metrics(train_fn),
                     n_trials=num_sweep,
                     show_progress_bar=True,
                     callbacks=[wandbc],
                 )
 
-                wandb.log(
-                    {
-                        "best": {
-                            "params": study.best_trial.params,
-                            "value": study.best_trial.value,
-                        }
-                    }
-                )
+                wandb.run.summary = {
+                    "number": study.best_trial.number,
+                    "params": study.best_trial.params,
+                    "value": study.best_trial.value,
+                }
                 wandb.finish()
 
 
