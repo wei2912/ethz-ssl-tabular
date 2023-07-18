@@ -251,11 +251,15 @@ def main(args: argparse.Namespace) -> None:
                     callbacks=[wandbc],
                 )
 
-                wandb.run.summary["number"] = study.best_trial.number
-                wandb.run.summary["params"] = study.best_trial.params
-                wandb.run.summary["value"] = study.best_trial.value
-                wandb.run.summary.update()
-
+                wandb.log(
+                    {
+                        "best": {
+                            "number": study.best_trial.number,
+                            "params": study.best_trial.params,
+                            "value": study.best_trial.value,
+                        }
+                    }
+                )
                 wandb.finish()
 
 
