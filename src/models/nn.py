@@ -55,7 +55,7 @@ class MLP(nn.Module):
 
 
 BATCH_SIZE = 128
-N_ITER = 5000
+N_ITER = 2000
 
 
 class MLPModel(SLModel):

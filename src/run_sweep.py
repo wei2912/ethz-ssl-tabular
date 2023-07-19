@@ -13,17 +13,28 @@ from typing import Any, Callable, Dict, List, Tuple, TypeAlias, Union
 
 from models import SemiSLModel, SLModel
 from models.nn import MLPModel
-from models.self_training import SelfTrainingModel
+from models.self_training import (
+    SelfTrainingModel_CurriculumLearning,
+    SelfTrainingModel_SingleIterate,
+)
 from models.trees import HGBTModel, RandomForestModel
+
+TrainFnType: TypeAlias = Callable[[optuna.trial.Trial], Tuple[float, Dict[str, Any]]]
+TestFnType: TypeAlias = Callable[[], Dict[str, Any]]
 
 SEED: int = 123456
 MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
     "random-forest": lambda: RandomForestModel(),
-    "random-forest-st": lambda: SelfTrainingModel(RandomForestModel),
+    "random-forest-st": lambda: SelfTrainingModel_SingleIterate(RandomForestModel),
+    "random-forest-st-curr": lambda: SelfTrainingModel_CurriculumLearning(
+        RandomForestModel
+    ),
     "hgbt": lambda: HGBTModel(),
-    "hgbt-st": lambda: SelfTrainingModel(HGBTModel),
+    "hgbt-st": lambda: SelfTrainingModel_SingleIterate(HGBTModel),
+    "hgbt-st-curr": lambda: SelfTrainingModel_CurriculumLearning(HGBTModel),
     "mlp": lambda: MLPModel(),
-    "mlp-st": lambda: SelfTrainingModel(MLPModel),
+    "mlp-st": lambda: SelfTrainingModel_SingleIterate(MLPModel),
+    "mlp-st-curr": lambda: SelfTrainingModel_CurriculumLearning(MLPModel),
 }
 
 # following https://arxiv.org/pdf/2207.08815.pdf pg. 19
@@ -111,10 +122,6 @@ def main(args: argparse.Namespace) -> None:
         print("===")
 
         for model_name in models:
-            TrainFnType: TypeAlias = Callable[
-                [optuna.trial.Trial], Tuple[float, Dict[str, Any]]
-            ]
-            TestFnType: TypeAlias = Callable[[], Dict[str, Any]]
 
             def sweep_sl(l_split: float) -> Tuple[TrainFnType, TestFnType]:
                 assert l_split > 0.0
