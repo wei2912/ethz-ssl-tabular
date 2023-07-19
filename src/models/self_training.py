@@ -85,7 +85,7 @@ class SelfTrainingModel_CurriculumLearning(SemiSLModel):
         threshold = STEP_THRESHOLD
         i = 0
         self._model = self.base_model_fn()
-        while True:
+        while threshold <= 1.0:
             X, y = X_train, y_train
             _, pl_metrics = self._model.train(
                 trial, X_train, y_train, X_val, y_val, is_sweep=is_sweep
@@ -102,6 +102,7 @@ class SelfTrainingModel_CurriculumLearning(SemiSLModel):
                     (X_train, np.take(X_train_ul, ids, axis=0))
                 ), np.concatenate((y_train, np.take(y_pl, ids, axis=0)))
             else:
+                ids = range(len(X_train_ul))
                 X, y = np.concatenate((X_train, X_train_ul)), np.concatenate(
                     (y_train, y_pl)
                 )
@@ -117,10 +118,8 @@ class SelfTrainingModel_CurriculumLearning(SemiSLModel):
                 "threshold": threshold,
                 **new_metrics,
             }
-            i += 1
 
-            if threshold == 1.0:
-                break
+            i += 1
             threshold += STEP_THRESHOLD
 
         return (score, metrics)
