@@ -82,27 +82,27 @@ class SelfTrainingModel_CurriculumLearning(SemiSLModel):
         STEP_THRESHOLD: float = 0.2
 
         metrics = {}
+
+        self._model = self.base_model_fn()
+        score, initial_metrics = self._model.train(
+            trial, X_train, y_train, X_val, y_val, is_sweep=is_sweep
+        )
+        metrics["initial"] = initial_metrics
+
         threshold = STEP_THRESHOLD
         i = 0
-        self._model = self.base_model_fn()
         while threshold <= 1.0:
-            X, y = X_train, y_train
-            _, pl_metrics = self._model.train(
-                trial, X_train, y_train, X_val, y_val, is_sweep=is_sweep
-            )
-
             y_pl_probs = self._model.predict_proba(X_train_ul)
             y_pl = y_pl_probs.argmax(axis=1)
             y_pl_max_prob = y_pl_probs.max(axis=1)
 
-            pivot_id = math.ceil(threshold * len(X_train_ul))
+            pivot_id = min(math.ceil(threshold * len(X_train_ul)), len(X_train_ul))
             if pivot_id < len(X_train_ul):
                 ids = np.argpartition(y_pl_max_prob, -pivot_id)[-pivot_id:]
                 X, y = np.concatenate(
                     (X_train, np.take(X_train_ul, ids, axis=0))
                 ), np.concatenate((y_train, np.take(y_pl, ids, axis=0)))
             else:
-                ids = range(len(X_train_ul))
                 X, y = np.concatenate((X_train, X_train_ul)), np.concatenate(
                     (y_train, y_pl)
                 )
@@ -113,8 +113,7 @@ class SelfTrainingModel_CurriculumLearning(SemiSLModel):
             )
 
             metrics[f"pl_iter{i}"] = {
-                "pl": pl_metrics,
-                "n_pl": len(ids),
+                "n_pl": pivot_id,
                 "threshold": threshold,
                 **new_metrics,
             }

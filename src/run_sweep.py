@@ -231,6 +231,8 @@ def main(args: argparse.Namespace) -> None:
                 elif IS_SEMISL_MODEL:
                     train_fn, test_fn = sweep_semisl(l_split, ul_split)
 
+                test_metricss = {}
+
                 def get_score_and_log_metrics(
                     train_fn: TrainFnType, test_fn: TestFnType
                 ):
@@ -238,6 +240,7 @@ def main(args: argparse.Namespace) -> None:
                     def objective_fn(trial: optuna.Trial):
                         score, run_metrics = train_fn(trial)
                         test_metrics = test_fn()
+                        test_metricss[trial.number] = test_metrics
                         wandb.log(
                             {
                                 "run": run_metrics,
@@ -264,6 +267,7 @@ def main(args: argparse.Namespace) -> None:
                             "number": study.best_trial.number,
                             "params": study.best_trial.params,
                             "value": study.best_trial.value,
+                            "test": test_metricss[study.best_trial.number],
                         }
                     }
                 )
