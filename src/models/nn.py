@@ -1,5 +1,6 @@
 import numpy as np
 import optuna
+from sklearn.preprocessing import QuantileTransformer
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
@@ -55,7 +56,7 @@ class MLP(nn.Module):
 
 
 BATCH_SIZE = 128
-N_ITER = 2000
+SEED = 654321
 
 
 class MLPModel(SLModel):
@@ -77,29 +78,37 @@ class MLPModel(SLModel):
         input_size = X_train.shape[1]
         n_classes = len(np.unique(y_train))
 
+        # transformation adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 4
+        self._qt = QuantileTransformer(
+            n_quantiles=200, output_distribution="normal", random_state=SEED
+        )
+        X_train_t = self._qt.fit_transform(X_train, y_train)
+        X_val_t = self._qt.transform(X_val)
+
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         if not is_sweep:
             n_blocks = trial.suggest_categorical("n_blocks", [8])
             layer_size = trial.suggest_categorical("layer_size", [512])
             dropout_p = trial.suggest_categorical("dropout_p", [0])
-            lr = trial.suggest_categorical("lr", [1e-3])
         else:
             n_blocks = trial.suggest_int("n_blocks", 4, 16, log=True)
             layer_size = trial.suggest_int("layer_size", 64, 1024, log=True)
             dropout_p = trial.suggest_float("dropout_p", 0, 0.5)
-            lr = trial.suggest_float("lr", 1e-4, 1e-2)
+        # lr = trial.suggest_categorical("lr", [0.2])
+        n_iter = trial.suggest_categorical("n_iter", [2000])
 
         self._mlp = MLP(input_size, n_classes, n_blocks, layer_size, dropout_p).to(
             self._device
         )
 
-        optimizer = torch.optim.SGD(self._mlp.parameters(), lr=lr)
+        optimizer = torch.optim.AdamW(self._mlp.parameters())
+        # optimizer = torch.optim.SGD(self._mlp.parameters(), lr=lr)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
         criterion = torch.nn.CrossEntropyLoss()
 
         train_loader = DataLoader(
             TensorDataset(
-                torch.from_numpy(X_train).float(), torch.from_numpy(y_train).long()
+                torch.from_numpy(X_train_t).float(), torch.from_numpy(y_train).long()
             ),
             batch_size=BATCH_SIZE,
             shuffle=True,
@@ -107,7 +116,7 @@ class MLPModel(SLModel):
         )
         val_loader = DataLoader(
             TensorDataset(
-                torch.from_numpy(X_val).float(), torch.from_numpy(y_val).long()
+                torch.from_numpy(X_val_t).float(), torch.from_numpy(y_val).long()
             ),
             batch_size=BATCH_SIZE,
             shuffle=False,
@@ -117,10 +126,10 @@ class MLPModel(SLModel):
         train_losses = []
         val_losses = []
         lrs = []
-        while i < N_ITER:
+        while i < n_iter:
             train_loss = 0.0
             for X_train_b, y_train_b in train_loader:
-                if i > N_ITER:
+                if i > n_iter:
                     break
 
                 self._mlp.train()
@@ -137,10 +146,10 @@ class MLPModel(SLModel):
                 loss.backward()
                 optimizer.step()
 
-                self._mlp.eval()
-
                 i += 1
             else:
+                self._mlp.eval()
+
                 train_losses.append(train_loss)
 
                 val_loss = 0.0
@@ -174,15 +183,17 @@ class MLPModel(SLModel):
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         self._mlp.eval()
 
+        X_t = self._qt.transform(X)
+
         loader = DataLoader(
-            TensorDataset(torch.from_numpy(X).float()),
+            TensorDataset(torch.from_numpy(X_t).float()),
             batch_size=BATCH_SIZE,
             shuffle=False,
         )
 
         probss = []
-        for (X_batch,) in loader:
-            X_batch = X_batch.to(self._device)
-            probss.append(self._mlp(X_batch).detach().cpu().numpy())
+        for (X_b,) in loader:
+            X_b = X_b.to(self._device)
+            probss.append(self._mlp(X_b).detach().cpu().numpy())
 
         return np.concatenate(probss)
