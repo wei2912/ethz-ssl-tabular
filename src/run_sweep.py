@@ -37,13 +37,13 @@ MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
     "mlp-st-curr": lambda: SelfTrainingModel_CurriculumLearning(MLPModel),
 }
 
-# following https://arxiv.org/pdf/2207.08815.pdf pg. 19
-TEST_VAL_SPLIT: float = 0.3
+MAX_TEST_VAL: int = 1000
+TEST_VAL_SPLIT: float = 0.1
 VAL_SPLIT: float = 0.3
 
-SMALL_SPLIT_VALS: List[float] = [0.002 * x for x in range(5, 0, -1)]
-LARGE_SPLIT_VALS: List[float] = [0.2 * x - 0.1 for x in range(5, 0, -1)]
-L_SPLITS: List[float] = [1.0] + LARGE_SPLIT_VALS + SMALL_SPLIT_VALS
+SMALL_SPLIT_VALS: List[float] = [0.0025 * x for x in range(4, 0, -1)]
+LARGE_SPLIT_VALS: List[float] = [0.25 * x for x in range(4, 0, -1)]
+L_SPLITS: List[float] = LARGE_SPLIT_VALS + SMALL_SPLIT_VALS
 L_UL_SPLITS: List[Tuple[float, float]] = list(
     filter(
         lambda t: t[0] + t[1] <= 1,
@@ -105,7 +105,10 @@ def main(args: argparse.Namespace) -> None:
         assert isinstance(y, pd.Series)
         X, y = X.to_numpy(), y.cat.codes.to_numpy()
         X_train_full, X_test_val, y_train_full, y_test_val = train_test_split(
-            X, y, test_size=TEST_VAL_SPLIT, random_state=SEED
+            X,
+            y,
+            test_size=min(TEST_VAL_SPLIT * len(X), MAX_TEST_VAL),
+            random_state=SEED,
         )
         X_test, X_val, y_test, y_val = train_test_split(
             X_test_val, y_test_val, test_size=VAL_SPLIT, random_state=SEED + 1
@@ -170,7 +173,7 @@ def main(args: argparse.Namespace) -> None:
                         y_train_full,
                         train_size=l_split,
                         test_size=ul_split,
-                        random_state=SEED + 1,
+                        random_state=SEED + 2,
                     )
                 print(
                     f">> L/UL Split: {len(X_train)}/{len(X_train_ul)} "
@@ -231,6 +234,7 @@ def main(args: argparse.Namespace) -> None:
                 elif IS_SEMISL_MODEL:
                     train_fn, test_fn = sweep_semisl(l_split, ul_split)
 
+                run_metricss = {}
                 test_metricss = {}
 
                 def get_score_and_log_metrics(
@@ -240,7 +244,10 @@ def main(args: argparse.Namespace) -> None:
                     def objective_fn(trial: optuna.Trial):
                         score, run_metrics = train_fn(trial)
                         test_metrics = test_fn()
+                        run_metricss[trial.number] = run_metrics
                         test_metricss[trial.number] = test_metrics
+                        # FIXME - create way to specify lists that need to be logged
+                        # stepwise
                         wandb.log(
                             {
                                 "run": run_metrics,
@@ -267,6 +274,7 @@ def main(args: argparse.Namespace) -> None:
                             "number": study.best_trial.number,
                             "params": study.best_trial.params,
                             "value": study.best_trial.value,
+                            "run": run_metricss[study.best_trial.number],
                             "test": test_metricss[study.best_trial.number],
                         }
                     }

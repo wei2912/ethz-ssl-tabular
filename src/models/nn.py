@@ -5,12 +5,18 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
+import math
 from typing import Any, Dict, Tuple
 
 from . import SLModel
 
 
 class MLPBlock(nn.Module):
+    """
+    Implementation of MLP for tabular data, adapted from
+    https://arxiv.org/pdf/2106.11959.pdf.
+    """
+
     def __init__(self, input_size: int, output_size: int, dropout_p: float = 0.5):
         super().__init__()
 
@@ -56,6 +62,9 @@ class MLP(nn.Module):
 
 
 BATCH_SIZE = 128
+N_ITER = 4000
+N_ITER_PER_RESTART = 800
+TOLERANCE = 1e-2
 SEED = 654321
 
 
@@ -81,7 +90,7 @@ class MLPModel(SLModel):
 
         # transformation adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 4
         self._qt = QuantileTransformer(
-            n_quantiles=200, output_distribution="normal", random_state=SEED
+            n_quantiles=1000, output_distribution="normal", random_state=SEED
         )
         X_train_t = self._qt.fit_transform(X_train, y_train)
         X_val_t = self._qt.transform(X_val)
@@ -95,17 +104,11 @@ class MLPModel(SLModel):
             n_blocks = trial.suggest_int("n_blocks", 4, 16, log=True)
             layer_size = trial.suggest_int("layer_size", 64, 1024, log=True)
             dropout_p = trial.suggest_float("dropout_p", 0, 0.5)
-        # lr = trial.suggest_categorical("lr", [0.2])
-        n_iter = trial.suggest_categorical("n_iter", [2000])
+        lr = trial.suggest_categorical("lr", [0.1])
 
         self._mlp = MLP(input_size, n_classes, n_blocks, layer_size, dropout_p).to(
             self._device
         )
-
-        optimizer = torch.optim.AdamW(self._mlp.parameters())
-        # optimizer = torch.optim.SGD(self._mlp.parameters(), lr=lr)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
-        criterion = torch.nn.CrossEntropyLoss()
 
         train_loader = DataLoader(
             TensorDataset(
@@ -121,16 +124,29 @@ class MLPModel(SLModel):
             ),
             batch_size=BATCH_SIZE,
             shuffle=False,
+            pin_memory=self._is_device_cuda,
         )
 
-        i = 0
-        train_losses = []
-        val_losses = []
+        N_ITER_PER_EPOCH = len(train_loader)
+        N_EPOCH_PER_RESTART = math.ceil(N_ITER_PER_RESTART / N_ITER_PER_EPOCH)
+        PATIENCE = max(N_EPOCH_PER_RESTART // 4, 5)
+
+        optimizer = torch.optim.SGD(self._mlp.parameters(), lr=lr)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer, N_EPOCH_PER_RESTART
+        )
+        criterion = torch.nn.CrossEntropyLoss()
+
+        i, epoch = 0, 0
+        train_losses, train_accs = [], []
+        val_losses, val_accs = [], []
+        best_val_loss = float("inf")
+        is_val_loss_betters = []
         lrs = []
-        while i < n_iter:
+        while i < N_ITER:
             train_loss = 0.0
             for X_train_b, y_train_b in train_loader:
-                if i > n_iter:
+                if i >= N_ITER:
                     break
 
                 self._mlp.train()
@@ -146,12 +162,17 @@ class MLPModel(SLModel):
 
                 loss.backward()
                 optimizer.step()
+                scheduler.step(i / N_ITER_PER_EPOCH)
 
                 i += 1
             else:
+                lrs.append(scheduler.get_last_lr()[0])
+
                 self._mlp.eval()
 
+                train_acc = self.top_1_acc(X_train, y_train)
                 train_losses.append(train_loss)
+                train_accs.append(train_acc)
 
                 val_loss = 0.0
                 for X_val_b, y_val_b in val_loader:
@@ -159,10 +180,26 @@ class MLPModel(SLModel):
                         self._device
                     )
                     val_loss += criterion(self._mlp(X_val_b), y_val_b).item()
+                val_acc = self.top_1_acc(X_val, y_val)
+                is_val_loss_betters.append(val_loss < best_val_loss - TOLERANCE)
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
                 val_losses.append(val_loss)
+                val_accs.append(val_acc)
 
-                scheduler.step(val_loss)
-                lrs.append(optimizer.param_groups[0]["lr"])
+                epoch += 1
+
+                # only stop early some time after the last restart, from the second
+                # restart onwards
+                if all(
+                    (
+                        len(is_val_loss_betters) >= PATIENCE,
+                        epoch >= 2 * N_EPOCH_PER_RESTART,
+                        epoch % N_EPOCH_PER_RESTART >= PATIENCE,
+                        not any(is_val_loss_betters[-PATIENCE:]),
+                    )
+                ):
+                    break
 
         train_acc = self.top_1_acc(X_train, y_train)
         val_acc = self.top_1_acc(X_val, y_val)
@@ -171,10 +208,18 @@ class MLPModel(SLModel):
             {
                 "train": {
                     "acc": train_acc,
+                    "max_epochs": N_ITER // N_ITER_PER_EPOCH,
+                    "policy": {
+                        "n_epoch_per_restart": N_EPOCH_PER_RESTART,
+                        "patience": PATIENCE,
+                        "tolerance": TOLERANCE,
+                    },
                     "per_epoch": {
-                        "train_losses": train_losses,
-                        "val_losses": val_losses,
                         "lrs": lrs,
+                        "train_losses": train_losses,
+                        "train_accs": train_accs,
+                        "val_losses": val_losses,
+                        "val_accs": val_accs,
                     },
                 },
                 "val": {"acc": val_acc},
@@ -190,6 +235,7 @@ class MLPModel(SLModel):
             TensorDataset(torch.from_numpy(X_t).float()),
             batch_size=BATCH_SIZE,
             shuffle=False,
+            pin_memory=self._is_device_cuda,
         )
 
         probss = []
