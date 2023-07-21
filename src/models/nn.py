@@ -9,6 +9,7 @@ import math
 from typing import Any, Dict, Tuple
 
 from . import SLModel
+from log_utils import Stepwise
 
 
 class MLPBlock(nn.Module):
@@ -97,13 +98,11 @@ class MLPModel(SLModel):
 
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         if not is_sweep:
-            n_blocks = trial.suggest_categorical("n_blocks", [8])
-            layer_size = trial.suggest_categorical("layer_size", [512])
             dropout_p = trial.suggest_categorical("dropout_p", [0])
         else:
-            n_blocks = trial.suggest_int("n_blocks", 4, 16, log=True)
-            layer_size = trial.suggest_int("layer_size", 64, 1024, log=True)
-            dropout_p = trial.suggest_float("dropout_p", 0, 0.5)
+            dropout_p = trial.suggest_float("dropout_p", 0, 0.1)
+        n_blocks = trial.suggest_categorical("n_blocks", [8])
+        layer_size = trial.suggest_categorical("layer_size", [512])
         lr = trial.suggest_categorical("lr", [0.1])
 
         self._mlp = MLP(input_size, n_classes, n_blocks, layer_size, dropout_p).to(
@@ -128,8 +127,8 @@ class MLPModel(SLModel):
         )
 
         N_ITER_PER_EPOCH = len(train_loader)
-        N_EPOCH_PER_RESTART = math.ceil(N_ITER_PER_RESTART / N_ITER_PER_EPOCH)
-        PATIENCE = max(N_EPOCH_PER_RESTART // 4, 5)
+        N_EPOCH_PER_RESTART = max(math.ceil(N_ITER_PER_RESTART / N_ITER_PER_EPOCH), 40)
+        PATIENCE = N_EPOCH_PER_RESTART // 4
 
         optimizer = torch.optim.SGD(self._mlp.parameters(), lr=lr)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
@@ -215,11 +214,11 @@ class MLPModel(SLModel):
                         "tolerance": TOLERANCE,
                     },
                     "per_epoch": {
-                        "lrs": lrs,
-                        "train_losses": train_losses,
-                        "train_accs": train_accs,
-                        "val_losses": val_losses,
-                        "val_accs": val_accs,
+                        "lrs": Stepwise(lrs),
+                        "train_losses": Stepwise(train_losses),
+                        "train_accs": Stepwise(train_accs),
+                        "val_losses": Stepwise(val_losses),
+                        "val_accs": Stepwise(val_accs),
                     },
                 },
                 "val": {"acc": val_acc},

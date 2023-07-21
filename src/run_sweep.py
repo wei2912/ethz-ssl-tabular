@@ -11,6 +11,7 @@ import os
 import itertools
 from typing import Any, Callable, Dict, List, Tuple, TypeAlias, Union
 
+from log_utils import Stepwise, flatten_metrics
 from models import SemiSLModel, SLModel
 from models.nn import MLPModel
 from models.self_training import (
@@ -246,8 +247,7 @@ def main(args: argparse.Namespace) -> None:
                         test_metrics = test_fn()
                         run_metricss[trial.number] = run_metrics
                         test_metricss[trial.number] = test_metrics
-                        # FIXME - create way to specify lists that need to be logged
-                        # stepwise
+
                         wandb.log(
                             {
                                 "run": run_metrics,
@@ -268,7 +268,7 @@ def main(args: argparse.Namespace) -> None:
                     callbacks=[wandbc],
                 )
 
-                wandb.log(
+                metrics = flatten_metrics(
                     {
                         "best": {
                             "number": study.best_trial.number,
@@ -279,6 +279,25 @@ def main(args: argparse.Namespace) -> None:
                         }
                     }
                 )
+
+                max_steps = max(
+                    len(val) for val in metrics.values() if isinstance(val, Stepwise)
+                )
+                non_step_metric_dict = {}
+                step_metric_dicts = [{} for _ in range(max_steps)]
+                for key, val in metrics.items():
+                    if isinstance(val, Stepwise):
+                        for i, val_item in enumerate(val):
+                            print(i, key, val_item)
+                            step_metric_dicts[i][key] = val_item
+                            print(step_metric_dicts[i])
+                    else:
+                        non_step_metric_dict[key] = val
+
+                wandb.log(non_step_metric_dict)
+                for step_metric_dict in step_metric_dicts:
+                    wandb.log(step_metric_dict)
+
                 wandb.finish()
 
 
