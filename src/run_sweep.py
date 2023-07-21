@@ -50,7 +50,7 @@ L_UL_SPLITS: List[Tuple[float, float]] = list(
         lambda t: t[0] + t[1] <= 1,
         itertools.chain(
             itertools.product(LARGE_SPLIT_VALS, LARGE_SPLIT_VALS),
-            itertools.product([0.01], LARGE_SPLIT_VALS),
+            itertools.product(SMALL_SPLIT_VALS, LARGE_SPLIT_VALS),
             itertools.product(SMALL_SPLIT_VALS, SMALL_SPLIT_VALS),
         ),
     )
