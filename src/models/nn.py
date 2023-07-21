@@ -76,7 +76,8 @@ class MLPModel(SLModel):
         is_sweep: bool = True,
     ) -> Tuple[float, Dict[str, Any]]:
         input_size = X_train.shape[1]
-        n_classes = len(np.unique(y_train))
+        # FIXME: should contain all classes with high prob.
+        n_classes = len(np.unique(y_val))
 
         # transformation adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 4
         self._qt = QuantileTransformer(
