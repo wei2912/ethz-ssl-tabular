@@ -38,7 +38,7 @@ MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
     "mlp-st-curr": lambda: SelfTrainingModel_CurriculumLearning(MLPModel),
 }
 
-MAX_TEST_VAL: int = 1000
+N_TEST_VAL: int = 1000
 TEST_VAL_SPLIT: float = 0.1
 VAL_SPLIT: float = 0.3
 
@@ -108,7 +108,7 @@ def main(args: argparse.Namespace) -> None:
         X_train_full, X_test_val, y_train_full, y_test_val = train_test_split(
             X,
             y,
-            test_size=min(TEST_VAL_SPLIT * len(X), MAX_TEST_VAL),
+            test_size=N_TEST_VAL,
             random_state=SEED,
         )
         X_test, X_val, y_test, y_val = train_test_split(
@@ -288,9 +288,7 @@ def main(args: argparse.Namespace) -> None:
                 for key, val in metrics.items():
                     if isinstance(val, Stepwise):
                         for i, val_item in enumerate(val):
-                            print(i, key, val_item)
                             step_metric_dicts[i][key] = val_item
-                            print(step_metric_dicts[i])
                     else:
                         non_step_metric_dict[key] = val
 
