@@ -287,7 +287,8 @@ def main(args: argparse.Namespace) -> None:
                 )
 
                 max_steps = max(
-                    len(val) for val in metrics.values() if isinstance(val, Stepwise)
+                    (len(val) for val in metrics.values() if isinstance(val, Stepwise)),
+                    default=0,
                 )
                 non_step_metric_dict = {}
                 step_metric_dicts = [{} for _ in range(max_steps)]
