@@ -1,6 +1,5 @@
 import numpy as np
 import optuna
-from sklearn.preprocessing import QuantileTransformer
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
@@ -89,13 +88,6 @@ class MLPModel(SLModel):
         # FIXME: should contain all classes with high prob.
         n_classes = len(np.unique(y_val))
 
-        # transformation adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 4
-        self._qt = QuantileTransformer(
-            n_quantiles=1000, output_distribution="normal", random_state=SEED
-        )
-        X_train_t = self._qt.fit_transform(X_train, y_train)
-        X_val_t = self._qt.transform(X_val)
-
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         if not is_sweep:
             dropout_p = trial.suggest_categorical("dropout_p", [0])
@@ -111,7 +103,7 @@ class MLPModel(SLModel):
 
         train_loader = DataLoader(
             TensorDataset(
-                torch.from_numpy(X_train_t).float(), torch.from_numpy(y_train).long()
+                torch.from_numpy(X_train).float(), torch.from_numpy(y_train).long()
             ),
             batch_size=BATCH_SIZE,
             shuffle=True,
@@ -119,7 +111,7 @@ class MLPModel(SLModel):
         )
         val_loader = DataLoader(
             TensorDataset(
-                torch.from_numpy(X_val_t).float(), torch.from_numpy(y_val).long()
+                torch.from_numpy(X_val).float(), torch.from_numpy(y_val).long()
             ),
             batch_size=BATCH_SIZE,
             shuffle=False,
@@ -188,13 +180,13 @@ class MLPModel(SLModel):
 
                 epoch += 1
 
-                # only stop early some time after the last restart, from the second
-                # restart onwards
+                # only stop early some time after a warm restart
+                # and only perform early stopping after 2 restarts
                 if all(
                     (
                         len(is_val_loss_betters) >= PATIENCE,
                         epoch >= 2 * N_EPOCH_PER_RESTART,
-                        epoch % N_EPOCH_PER_RESTART >= PATIENCE,
+                        epoch % N_EPOCH_PER_RESTART >= 3 * PATIENCE,
                         not any(is_val_loss_betters[-PATIENCE:]),
                     )
                 ):
@@ -228,10 +220,8 @@ class MLPModel(SLModel):
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         self._mlp.eval()
 
-        X_t = self._qt.transform(X)
-
         loader = DataLoader(
-            TensorDataset(torch.from_numpy(X_t).float()),
+            TensorDataset(torch.from_numpy(X).float()),
             batch_size=BATCH_SIZE,
             shuffle=False,
             pin_memory=self._is_device_cuda,

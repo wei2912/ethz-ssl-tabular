@@ -3,6 +3,7 @@ import optuna
 from optuna.integration.wandb import WeightsAndBiasesCallback
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import QuantileTransformer
 from tqdm.auto import tqdm
 import wandb
 
@@ -105,8 +106,13 @@ def main(args: argparse.Namespace) -> None:
         assert isinstance(X, pd.DataFrame)
         assert isinstance(y, pd.Series)
         X, y = X.to_numpy(), y.cat.codes.to_numpy()
+
+        # transformation adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 4
+        qt = QuantileTransformer(output_distribution="normal", random_state=SEED)
+        X_t = qt.fit_transform(X, y)
+
         X_train_full, X_test_val, y_train_full, y_test_val = train_test_split(
-            X,
+            X_t,
             y,
             test_size=N_TEST_VAL,
             random_state=SEED,
