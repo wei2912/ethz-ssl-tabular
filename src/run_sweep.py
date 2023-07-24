@@ -257,11 +257,12 @@ def main(args: argparse.Namespace) -> None:
 
                         wandb.log(
                             {
-                                "run": run_metrics,
-                                "test": test_metrics,
-                                "number": trial.number,
-                                "params": trial.params,
-                                "value": score,
+                                f"trial{trial.number}": {
+                                    "run": run_metrics,
+                                    "test": test_metrics,
+                                    "params": trial.params,
+                                    "value": score,
+                                }
                             }
                         )
                         return score
