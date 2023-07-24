@@ -32,13 +32,9 @@ MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
         RandomForestModel
     ),
     "random-forest-st-curr": lambda: SelfTrainingModel_Curriculum(RandomForestModel),
-    "random-forest-st-curr-si": lambda: SelfTrainingModel_CurriculumSingleIterate(
-        RandomForestModel
-    ),
     "hgbt": lambda: HGBTModel(),
     "hgbt-st-th-si": lambda: SelfTrainingModel_ThresholdSingleIterate(HGBTModel),
     "hgbt-st-curr": lambda: SelfTrainingModel_Curriculum(HGBTModel),
-    "hgbt-st-curr-si": lambda: SelfTrainingModel_CurriculumSingleIterate(HGBTModel),
     "mlp": lambda: MLPModel(),
     "mlp-st-th-si": lambda: SelfTrainingModel_ThresholdSingleIterate(MLPModel),
     "mlp-st-curr": lambda: SelfTrainingModel_Curriculum(MLPModel),
