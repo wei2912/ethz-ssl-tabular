@@ -16,8 +16,9 @@ from log_utils import Stepwise, flatten_metrics
 from models import SemiSLModel, SLModel
 from models.nn import MLPModel
 from models.self_training import (
-    SelfTrainingModel_CurriculumLearning,
-    SelfTrainingModel_SingleIterate,
+    SelfTrainingModel_Curriculum,
+    SelfTrainingModel_CurriculumSingleIterate,
+    SelfTrainingModel_ThresholdSingleIterate,
 )
 from models.trees import HGBTModel, RandomForestModel
 
@@ -27,16 +28,21 @@ TestFnType: TypeAlias = Callable[[], Dict[str, Any]]
 SEED: int = 123456
 MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
     "random-forest": lambda: RandomForestModel(),
-    "random-forest-st": lambda: SelfTrainingModel_SingleIterate(RandomForestModel),
-    "random-forest-st-curr": lambda: SelfTrainingModel_CurriculumLearning(
+    "random-forest-st-th-si": lambda: SelfTrainingModel_ThresholdSingleIterate(
+        RandomForestModel
+    ),
+    "random-forest-st-curr": lambda: SelfTrainingModel_Curriculum(RandomForestModel),
+    "random-forest-st-curr-si": lambda: SelfTrainingModel_CurriculumSingleIterate(
         RandomForestModel
     ),
     "hgbt": lambda: HGBTModel(),
-    "hgbt-st": lambda: SelfTrainingModel_SingleIterate(HGBTModel),
-    "hgbt-st-curr": lambda: SelfTrainingModel_CurriculumLearning(HGBTModel),
+    "hgbt-st-th-si": lambda: SelfTrainingModel_ThresholdSingleIterate(HGBTModel),
+    "hgbt-st-curr": lambda: SelfTrainingModel_Curriculum(HGBTModel),
+    "hgbt-st-curr-si": lambda: SelfTrainingModel_CurriculumSingleIterate(HGBTModel),
     "mlp": lambda: MLPModel(),
-    "mlp-st": lambda: SelfTrainingModel_SingleIterate(MLPModel),
-    "mlp-st-curr": lambda: SelfTrainingModel_CurriculumLearning(MLPModel),
+    "mlp-st-th-si": lambda: SelfTrainingModel_ThresholdSingleIterate(MLPModel),
+    "mlp-st-curr": lambda: SelfTrainingModel_Curriculum(MLPModel),
+    "mlp-st-curr-si": lambda: SelfTrainingModel_CurriculumSingleIterate(MLPModel),
 }
 
 N_TEST_VAL: int = 1000
