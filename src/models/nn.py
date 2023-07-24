@@ -216,8 +216,9 @@ class MLPModel(SLModel):
                         "val_losses": Stepwise(val_losses),
                         "val_accs": Stepwise(val_accs),
                     },
+                    "size": len(X_train),
                 },
-                "val": {"acc": val_acc},
+                "val": {"acc": val_acc, "size": len(X_val)},
             },
         )
 

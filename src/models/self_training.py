@@ -174,6 +174,7 @@ class SelfTrainingModel_Curriculum(SemiSLModel):
             )
 
             metrics[f"pl_iter{i}"] = {
+                "size_ul": len(X_train_ul),
                 "n_pl": pivot_id,
                 "threshold": threshold,
                 **new_metrics,
