@@ -62,7 +62,7 @@ class MLP(nn.Module):
 
 
 BATCH_SIZE = 128
-N_ITER = 4000
+N_ITER = 2400
 N_ITER_PER_RESTART = 800
 TOLERANCE = 1e-2
 SEED = 654321
@@ -120,7 +120,7 @@ class MLPModel(SLModel):
 
         N_ITER_PER_EPOCH = len(train_loader)
         N_EPOCH_PER_RESTART = max(math.ceil(N_ITER_PER_RESTART / N_ITER_PER_EPOCH), 40)
-        PATIENCE = N_EPOCH_PER_RESTART // 4
+        # PATIENCE = N_EPOCH_PER_RESTART // 4
 
         optimizer = torch.optim.SGD(self._mlp.parameters(), lr=lr)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
@@ -182,15 +182,15 @@ class MLPModel(SLModel):
 
                 # only stop early some time after a warm restart
                 # and only perform early stopping after 2 restarts
-                if all(
-                    (
-                        len(is_val_loss_betters) >= PATIENCE,
-                        epoch >= 2 * N_EPOCH_PER_RESTART,
-                        epoch % N_EPOCH_PER_RESTART >= 3 * PATIENCE,
-                        not any(is_val_loss_betters[-PATIENCE:]),
-                    )
-                ):
-                    break
+                # if all(
+                #    (
+                #        len(is_val_loss_betters) >= PATIENCE,
+                #        epoch >= 2 * N_EPOCH_PER_RESTART,
+                #        epoch % N_EPOCH_PER_RESTART >= 3 * PATIENCE,
+                #        not any(is_val_loss_betters[-PATIENCE:]),
+                #    )
+                # ):
+                #    break
 
         train_acc = self.top_1_acc(X_train, y_train)
         val_acc = self.top_1_acc(X_val, y_val)
@@ -202,7 +202,7 @@ class MLPModel(SLModel):
                     "max_epochs": N_ITER // N_ITER_PER_EPOCH,
                     "policy": {
                         "n_epoch_per_restart": N_EPOCH_PER_RESTART,
-                        "patience": PATIENCE,
+                        # "patience": PATIENCE,
                         "tolerance": TOLERANCE,
                     },
                     "per_epoch": {

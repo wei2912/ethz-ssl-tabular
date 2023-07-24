@@ -46,7 +46,6 @@ MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
 }
 
 N_TEST_VAL: int = 1000
-TEST_VAL_SPLIT: float = 0.1
 VAL_SPLIT: float = 0.3
 
 SMALL_SPLIT_VALS: List[float] = [0.0025 * x for x in range(4, 0, -1)]
