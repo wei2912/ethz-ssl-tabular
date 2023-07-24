@@ -119,7 +119,11 @@ class MLPModel(SLModel):
         )
 
         N_ITER_PER_EPOCH = len(train_loader)
-        N_EPOCH_PER_RESTART = max(math.ceil(N_ITER_PER_RESTART / N_ITER_PER_EPOCH), 40)
+        N_EPOCH_PER_RESTART = math.ceil(N_ITER_PER_RESTART / N_ITER_PER_EPOCH)
+        if N_EPOCH_PER_RESTART < 40:
+            N_EPOCH_PER_RESTART = math.ceil(
+                N_ITER / N_ITER_PER_EPOCH
+            )  # no warm restart
         # PATIENCE = N_EPOCH_PER_RESTART // 4
 
         optimizer = torch.optim.SGD(self._mlp.parameters(), lr=lr)
