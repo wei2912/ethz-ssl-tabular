@@ -174,9 +174,14 @@ def main(args: argparse.Namespace) -> None:
                 assert isinstance(model, SemiSLModel)
 
                 if l_split == 1.0:
-                    X_train, X_train_ul, y_train = X_train_full, None, y_train_full
+                    X_train, X_train_ul, y_train, y_train_ul = (
+                        X_train_full,
+                        None,
+                        y_train_full,
+                        None,
+                    )
                 else:
-                    X_train, X_train_ul, y_train, _ = train_test_split(
+                    X_train, X_train_ul, y_train, y_train_ul = train_test_split(
                         X_train_full,
                         y_train_full,
                         train_size=l_split,
@@ -197,6 +202,7 @@ def main(args: argparse.Namespace) -> None:
                         X_val,
                         y_val,
                         is_sweep=(num_sweep > 1),
+                        y_train_ul=y_train_ul,
                     )
 
                 def test_fn() -> Dict[str, Any]:
