@@ -130,7 +130,8 @@ class MLPModel(SLModel):
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
             optimizer, N_EPOCH_PER_RESTART
         )
-        criterion = torch.nn.CrossEntropyLoss()
+        # account for different minibatch sizes
+        criterion = torch.nn.CrossEntropyLoss(reduction="sum")
 
         i, epoch = 0, 0
         train_losses, train_accs = [], []
@@ -152,7 +153,7 @@ class MLPModel(SLModel):
 
                 optimizer.zero_grad()
 
-                loss = criterion(self._mlp(X_train_b), y_train_b)
+                loss = criterion(self._mlp(X_train_b), y_train_b) / len(X_train_b)
                 train_loss += loss.item()
 
                 loss.backward()
@@ -174,7 +175,9 @@ class MLPModel(SLModel):
                     X_val_b, y_val_b = X_val_b.to(self._device), y_val_b.to(
                         self._device
                     )
-                    val_loss += criterion(self._mlp(X_val_b), y_val_b).item()
+                    val_loss += criterion(self._mlp(X_val_b), y_val_b).item() / len(
+                        X_val_b
+                    )
                 val_acc = self.top_1_acc(X_val, y_val)
                 is_val_loss_betters.append(val_loss < best_val_loss - TOLERANCE)
                 if val_loss < best_val_loss:
