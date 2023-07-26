@@ -109,7 +109,7 @@ class SelfTrainingModel_CurriculumSingleIterate(SemiSLModel):
                 y_pl, ids, axis=0
             )
         else:
-            ids = list(range(len(X_train_pl)))
+            ids = list(range(len(X_train_ul)))
             X_train_pl, y_train_pl = X_train_ul, y_pl
 
         X, y = np.concatenate((X_train, X_train_pl)), np.concatenate(
@@ -188,7 +188,7 @@ class SelfTrainingModel_Curriculum(SemiSLModel):
                     y_pl, ids, axis=0
                 )
             else:
-                ids = list(range(len(X_train_pl)))
+                ids = list(range(len(X_train_ul)))
                 X_train_pl, y_train_pl = X_train_ul, y_pl
 
             X, y = np.concatenate((X_train, X_train_pl)), np.concatenate(
