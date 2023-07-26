@@ -4,7 +4,6 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-import math
 from typing import Any, Dict, Tuple
 
 from . import SLModel
@@ -61,10 +60,8 @@ class MLP(nn.Module):
         return self.classifier(x)
 
 
-BATCH_SIZE = 128
-N_ITER = 2400
-N_ITER_PER_RESTART = 800
-TOLERANCE = 1e-2
+MAX_BATCH_SIZE = 128
+N_ITER = 1000
 SEED = 654321
 
 
@@ -87,14 +84,16 @@ class MLPModel(SLModel):
         input_size = X_train.shape[1]
         # FIXME: should contain all classes with high prob.
         n_classes = len(np.unique(y_val))
+        # to ensure drop_last does not discard the entire dataset
+        batch_size = min(MAX_BATCH_SIZE, len(X_train))
 
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         if not is_sweep:
             dropout_p = trial.suggest_categorical("dropout_p", [0])
         else:
-            dropout_p = trial.suggest_float("dropout_p", 0, 0.1)
-        n_blocks = trial.suggest_categorical("n_blocks", [8])
-        layer_size = trial.suggest_categorical("layer_size", [512])
+            dropout_p = trial.suggest_float("dropout_p", 0, 0.2)
+        n_blocks = trial.suggest_categorical("n_blocks", [4])
+        layer_size = trial.suggest_categorical("layer_size", [256])
         lr = trial.suggest_categorical("lr", [0.1])
 
         self._mlp = MLP(input_size, n_classes, n_blocks, layer_size, dropout_p).to(
@@ -105,30 +104,26 @@ class MLPModel(SLModel):
             TensorDataset(
                 torch.from_numpy(X_train).float(), torch.from_numpy(y_train).long()
             ),
-            batch_size=BATCH_SIZE,
+            batch_size=batch_size,
             shuffle=True,
+            drop_last=True,
             pin_memory=self._is_device_cuda,
         )
         val_loader = DataLoader(
             TensorDataset(
                 torch.from_numpy(X_val).float(), torch.from_numpy(y_val).long()
             ),
-            batch_size=BATCH_SIZE,
+            batch_size=MAX_BATCH_SIZE,
             shuffle=False,
             pin_memory=self._is_device_cuda,
         )
 
-        N_ITER_PER_EPOCH = len(train_loader)
-        N_EPOCH_PER_RESTART = math.ceil(N_ITER_PER_RESTART / N_ITER_PER_EPOCH)
-        if N_EPOCH_PER_RESTART < 40:
-            N_EPOCH_PER_RESTART = math.ceil(
-                N_ITER / N_ITER_PER_EPOCH
-            )  # no warm restart
-        # PATIENCE = N_EPOCH_PER_RESTART // 4
+        n_iter_per_epoch = len(train_loader)
+        PATIENCE = N_ITER // (4 * n_iter_per_epoch)
 
         optimizer = torch.optim.SGD(self._mlp.parameters(), lr=lr)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer, N_EPOCH_PER_RESTART
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", patience=PATIENCE, factor=0.2
         )
         # account for different minibatch sizes
         criterion = torch.nn.CrossEntropyLoss(reduction="sum")
@@ -136,8 +131,6 @@ class MLPModel(SLModel):
         i, epoch = 0, 0
         train_losses, train_accs = [], []
         val_losses, val_accs = [], []
-        best_val_loss = float("inf")
-        is_val_loss_betters = []
         lrs = []
         while i < N_ITER:
             train_loss = 0.0
@@ -158,14 +151,12 @@ class MLPModel(SLModel):
 
                 loss.backward()
                 optimizer.step()
-                scheduler.step(i / N_ITER_PER_EPOCH)
 
                 i += 1
             else:
-                lrs.append(scheduler.get_last_lr()[0])
-
                 self._mlp.eval()
 
+                train_loss /= len(train_loader)
                 train_acc = self.top_1_acc(X_train, y_train)
                 train_losses.append(train_loss)
                 train_accs.append(train_acc)
@@ -178,26 +169,15 @@ class MLPModel(SLModel):
                     val_loss += criterion(self._mlp(X_val_b), y_val_b).item() / len(
                         X_val_b
                     )
+                val_loss /= len(val_loader)
                 val_acc = self.top_1_acc(X_val, y_val)
-                is_val_loss_betters.append(val_loss < best_val_loss - TOLERANCE)
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
+
+                scheduler.step(val_loss)
+
+                lrs.append(optimizer.param_groups[0]["lr"])
                 val_losses.append(val_loss)
                 val_accs.append(val_acc)
-
                 epoch += 1
-
-                # only stop early some time after a warm restart
-                # and only perform early stopping after 2 restarts
-                # if all(
-                #    (
-                #        len(is_val_loss_betters) >= PATIENCE,
-                #        epoch >= 2 * N_EPOCH_PER_RESTART,
-                #        epoch % N_EPOCH_PER_RESTART >= 3 * PATIENCE,
-                #        not any(is_val_loss_betters[-PATIENCE:]),
-                #    )
-                # ):
-                #    break
 
         train_acc = self.top_1_acc(X_train, y_train)
         val_acc = self.top_1_acc(X_val, y_val)
@@ -206,11 +186,10 @@ class MLPModel(SLModel):
             {
                 "train": {
                     "acc": train_acc,
-                    "max_epochs": N_ITER // N_ITER_PER_EPOCH,
+                    "batch_size": batch_size,
+                    "max_epochs": N_ITER // n_iter_per_epoch,
                     "policy": {
-                        "n_epoch_per_restart": N_EPOCH_PER_RESTART,
-                        # "patience": PATIENCE,
-                        "tolerance": TOLERANCE,
+                        "patience": PATIENCE,
                     },
                     "per_epoch": {
                         "lrs": Stepwise(lrs),
@@ -230,7 +209,7 @@ class MLPModel(SLModel):
 
         loader = DataLoader(
             TensorDataset(torch.from_numpy(X).float()),
-            batch_size=BATCH_SIZE,
+            batch_size=MAX_BATCH_SIZE,
             shuffle=False,
             pin_memory=self._is_device_cuda,
         )
