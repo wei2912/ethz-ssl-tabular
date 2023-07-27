@@ -1,6 +1,7 @@
 import openml
 import optuna
 from optuna.integration.wandb import WeightsAndBiasesCallback
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import StratifiedShuffleSplit, train_test_split
 from sklearn.preprocessing import QuantileTransformer
@@ -177,21 +178,19 @@ def main(args: argparse.Namespace) -> None:
         assert l_split + ul_split <= 1.0
 
         if l_split < 1.0:
-            sss = StratifiedShuffleSplit(
-                n_splits=1,
-                train_size=l_split,
-                test_size=ul_split if ul_split > 0.0 else None,
+            X_train_l, X_train_ul, y_train_l, y_train_ul = train_test_split(
+                X_train_val,
+                y_train_val,
+                train_size=N_TRAIN,
+                test_size=N_TEST,
                 random_state=seed,
             )
-            l_ids, ul_ids = next(sss.split(X_train_val, y_train_val))
         elif l_split == 1.0:
-            l_ids, ul_ids = (
-                random.Random(seed).sample(range(len(X_train_val)), k=len(X_train_val)),
-                [],
+            l_ids = random.Random(seed).sample(
+                range(len(X_train_val)), k=len(X_train_val)
             )
-
-        X_train_l, y_train_l = X_train_val[l_ids], y_train_val[l_ids]
-        X_train_ul, y_train_ul = X_train_val[ul_ids], y_train_val[ul_ids]
+            X_train_l, y_train_l = X_train_val[l_ids], y_train_val[l_ids]
+            X_train_ul, y_train_ul = np.array([]), np.array([])
 
         print("---")
         print(
