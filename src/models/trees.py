@@ -53,10 +53,11 @@ class HGBTModel(SLModel):
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         if not is_sweep:
             learning_rate = trial.suggest_categorical("learning_rate", [0.03])
+            max_iter = trial.suggest_categorical("max_iter", [300])
         else:
             learning_rate = trial.suggest_float("learning_rate", 0.01, 1.0, log=True)
+            max_iter = trial.suggest_int("max_iter", 50, 500, log=True)
         max_depth = trial.suggest_categorical("max_depth", [None])
-        max_iter = trial.suggest_categorical("max_iter", [300])
 
         model = HistGradientBoostingClassifier(
             learning_rate=learning_rate,
