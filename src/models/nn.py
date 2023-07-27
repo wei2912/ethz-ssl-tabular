@@ -79,7 +79,7 @@ class MLPModel(SLModel):
         y_train: np.ndarray,
         X_val: np.ndarray,
         y_val: np.ndarray,
-        is_sweep: bool = True,
+        **_
     ) -> Tuple[float, Dict[str, Any]]:
         input_size = X_train.shape[1]
         # FIXME: should contain all classes with high prob.
@@ -88,10 +88,7 @@ class MLPModel(SLModel):
         batch_size = min(MAX_BATCH_SIZE, len(X_train))
 
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
-        if not is_sweep:
-            dropout_p = trial.suggest_categorical("dropout_p", [0])
-        else:
-            dropout_p = trial.suggest_float("dropout_p", 0, 0.2)
+        dropout_p = trial.suggest_categorical("dropout_p", [0])
         n_blocks = trial.suggest_categorical("n_blocks", [4])
         layer_size = trial.suggest_categorical("layer_size", [256])
         lr = trial.suggest_categorical("lr", [0.1])
@@ -119,11 +116,12 @@ class MLPModel(SLModel):
         )
 
         n_iter_per_epoch = len(train_loader)
-        PATIENCE = N_ITER // (4 * n_iter_per_epoch)
+        patience = N_ITER // (4 * n_iter_per_epoch)
+        factor = 0.2
 
         optimizer = torch.optim.SGD(self._mlp.parameters(), lr=lr)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", patience=PATIENCE, factor=0.2
+            optimizer, mode="min", patience=patience, factor=factor
         )
         # account for different minibatch sizes
         criterion = torch.nn.CrossEntropyLoss(reduction="sum")
@@ -140,9 +138,8 @@ class MLPModel(SLModel):
 
                 self._mlp.train()
 
-                X_train_b, y_train_b = X_train_b.to(self._device), y_train_b.to(
-                    self._device
-                )
+                X_train_b = X_train_b.to(self._device)
+                y_train_b = y_train_b.to(self._device)
 
                 optimizer.zero_grad()
 
@@ -163,12 +160,11 @@ class MLPModel(SLModel):
 
                 val_loss = 0.0
                 for X_val_b, y_val_b in val_loader:
-                    X_val_b, y_val_b = X_val_b.to(self._device), y_val_b.to(
-                        self._device
-                    )
-                    val_loss += criterion(self._mlp(X_val_b), y_val_b).item() / len(
-                        X_val_b
-                    )
+                    X_val_b = X_val_b.to(self._device)
+                    y_val_b = y_val_b.to(self._device)
+
+                    z_val_b = self._mlp(X_val_b)
+                    val_loss += criterion(z_val_b, y_val_b).item() / len(X_val_b)
                 val_loss /= len(val_loader)
                 val_acc = self.top_1_acc(X_val, y_val)
 
@@ -189,7 +185,8 @@ class MLPModel(SLModel):
                     "batch_size": batch_size,
                     "max_epochs": N_ITER // n_iter_per_epoch,
                     "policy": {
-                        "patience": PATIENCE,
+                        "patience": patience,
+                        "factor": factor,
                     },
                     "per_epoch": {
                         "lrs": Stepwise(lrs),

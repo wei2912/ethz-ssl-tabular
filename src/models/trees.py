@@ -18,15 +18,11 @@ class RandomForestModel(SLModel):
         y_train: np.ndarray,
         X_val: np.ndarray,
         y_val: np.ndarray,
-        is_sweep: bool = True,
+        **_
     ) -> Tuple[float, Dict[str, Any]]:
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
-        if not is_sweep:
-            max_depth = trial.suggest_categorical("max_depth", [5])
-            n_estimators = trial.suggest_categorical("n_estimators", [100])
-        else:
-            max_depth = trial.suggest_categorical("max_depth", [None, 2, 3, 4, 5])
-            n_estimators = trial.suggest_int("n_estimators", 9, 3000, log=True)
+        max_depth = trial.suggest_categorical("max_depth", [None])
+        n_estimators = trial.suggest_categorical("n_estimators", [1000])
 
         model = RandomForestClassifier(
             max_depth=max_depth, n_estimators=n_estimators, n_jobs=-1
@@ -57,12 +53,10 @@ class HGBTModel(SLModel):
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         if not is_sweep:
             learning_rate = trial.suggest_categorical("learning_rate", [0.03])
-            max_depth = trial.suggest_categorical("max_depth", [None])
-            max_iter = trial.suggest_categorical("max_iter", [300])
         else:
             learning_rate = trial.suggest_float("learning_rate", 0.01, 10, log=True)
-            max_depth = trial.suggest_categorical("max_depth", [None, 2, 3, 4, 5])
-            max_iter = trial.suggest_int("max_iter", 10, 1000, log=True)
+        max_depth = trial.suggest_categorical("max_depth", [None])
+        max_iter = trial.suggest_categorical("max_iter", [300])
 
         model = HistGradientBoostingClassifier(
             learning_rate=learning_rate,
