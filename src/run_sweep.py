@@ -192,6 +192,7 @@ def main(args: argparse.Namespace) -> None:
         X_train_l, y_train_l = X_train_val[l_ids], y_train_val[l_ids]
         X_train_ul, y_train_ul = X_train_val[ul_ids], y_train_val[ul_ids]
 
+        print("---")
         print(
             f">> L/UL Split: {len(X_train_l)}/{len(X_train_ul)} "
             f"({l_split:.3}/{ul_split:.3})"
