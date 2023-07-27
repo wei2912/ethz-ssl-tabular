@@ -165,6 +165,7 @@ def main(args: argparse.Namespace) -> None:
                 },
                 "entity": entity,
                 "project": project_name,
+                "group": f"{model_name}_{l_split:.3}_{ul_split:.3}",
             },
         )
 
