@@ -12,7 +12,7 @@ import argparse
 import itertools
 import os
 import random
-from typing import Any, Callable, Dict, List, Tuple, TypeAlias, Union
+from typing import Any, Callable, Dict, List, Tuple, Union
 
 from log_utils import Stepwise, flatten_metrics
 from models import SemiSLModel, SLModel
@@ -23,9 +23,6 @@ from models.self_training import (
     SelfTrainingModel_ThresholdSingleIterate,
 )
 from models.trees import HGBTModel, RandomForestModel
-
-TrainFnType: TypeAlias = Callable[[optuna.trial.Trial], Tuple[float, Dict[str, Any]]]
-TestFnType: TypeAlias = Callable[[], Dict[str, Any]]
 
 MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
     "random-forest": lambda: RandomForestModel(),
@@ -42,8 +39,19 @@ MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
     "mlp-st-curr-si": lambda: SelfTrainingModel_CurriculumSingleIterate(MLPModel),
 }
 
-N_TEST: int = 1000
-N_TRAIN: int = 1000
+# datasets are taken from https://arxiv.org/pdf/2207.08815.pdf pg. 13
+# and https://arxiv.org/pdf/2106.03253.pdf pg. 12
+DATASETS: Dict[str, int] = {
+    # 57.5k samples, 55 features, 2 classes
+    "jannis": 45021,
+    # 13.9k samples, 130 features, 6 classes
+    "gas-drift-different-concentrations": 1477,
+    # 98k samples, 29 features, 2 classes
+    "higgs": 23512,
+}
+
+N_TEST: int = 10000
+N_TRAIN: int = 2000
 VAL_SPLIT: float = 0.3
 
 SMALL_SPLIT_VALS: List[float] = [0.05 * x for x in range(4, 0, -1)]
@@ -59,15 +67,6 @@ L_UL_SPLITS: List[Tuple[float, float]] = list(
         ),
     )
 )
-
-# datasets are taken from https://arxiv.org/pdf/2207.08815.pdf pg. 13
-# and https://arxiv.org/pdf/2106.03253.pdf pg. 12
-DATASETS: Dict[str, int] = {
-    # 57.5k samples, 55 features, 2 classes
-    "jannis": 45021,
-    # 13.9k samples, 130 features, 6 classes
-    "gas-drift-different-concentrations": 1477,
-}
 
 
 def preload_data(_) -> None:
@@ -216,6 +215,8 @@ def main(args: argparse.Namespace) -> None:
             f"({1 - VAL_SPLIT:.3}/{VAL_SPLIT:.3})"
         )
 
+        # FIXME - if using a score-dependent sampler, then a separate validation set
+        # needs to be used instead of the current method of returning the test accuracy
         study = optuna.create_study(
             direction="maximize", sampler=optuna.samplers.RandomSampler()
         )

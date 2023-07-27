@@ -1,6 +1,6 @@
 import numpy as np
 from optuna.trial import Trial
-from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 
 from typing import Any, Dict
 
@@ -22,7 +22,7 @@ class RandomForestModel(SLModel):
     ) -> Dict[str, Any]:
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         max_depth = trial.suggest_categorical("max_depth", [None])
-        n_estimators = trial.suggest_categorical("n_estimators", [1000])
+        n_estimators = trial.suggest_categorical("n_estimators", [300])
 
         model = RandomForestClassifier(
             max_depth=max_depth, n_estimators=n_estimators, n_jobs=-1
