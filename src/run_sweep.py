@@ -288,7 +288,7 @@ if __name__ == "__main__":
     parser_run.add_argument("--model", type=str, choices=MODELS.keys(), required=True)
     parser_run.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
     parser_run.add_argument("--seed", type=int, default=0)
-    parser_run.add_argument("--n-sweep", type=int, default=1)
+    parser_run.add_argument("--n-sweep", type=int, default=5)
     parser_run.set_defaults(func=main)
 
     args = parser.parse_args()
