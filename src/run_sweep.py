@@ -177,14 +177,22 @@ def main(args: argparse.Namespace) -> None:
         assert ul_split >= 0.0
         assert l_split + ul_split <= 1.0
 
-        if l_split < 1.0:
+        if l_split < 1.0 and ul_split > 0.0:
             X_train_l, X_train_ul, y_train_l, y_train_ul = train_test_split(
                 X_train_val,
                 y_train_val,
-                train_size=N_TRAIN,
-                test_size=N_TEST,
+                train_size=l_split,
+                test_size=ul_split,
                 random_state=seed,
             )
+        elif l_split < 1.0 and ul_split == 0.0:
+            X_train_l, _, y_train_l, _ = train_test_split(
+                X_train_val,
+                y_train_val,
+                train_size=l_split,
+                random_state=seed,
+            )
+            X_train_ul, y_train_ul = np.array([]), np.array([])
         elif l_split == 1.0:
             l_ids = random.Random(seed).sample(
                 range(len(X_train_val)), k=len(X_train_val)
@@ -208,7 +216,9 @@ def main(args: argparse.Namespace) -> None:
             f"({1 - VAL_SPLIT:.3}/{VAL_SPLIT:.3})"
         )
 
-        study = optuna.create_study(direction="maximize")
+        study = optuna.create_study(
+            direction="maximize", sampler=optuna.samplers.RandomSampler()
+        )
 
         @wandbc.track_in_wandb()
         def objective_fn(trial: optuna.trial.Trial) -> Tuple[float, Dict[str, Any]]:
