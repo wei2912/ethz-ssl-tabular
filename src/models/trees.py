@@ -2,7 +2,7 @@ import numpy as np
 from optuna.trial import Trial
 from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 from . import SLModel
 
@@ -19,7 +19,7 @@ class RandomForestModel(SLModel):
         X_val: np.ndarray,
         y_val: np.ndarray,
         **_
-    ) -> Tuple[float, Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         max_depth = trial.suggest_categorical("max_depth", [None])
         n_estimators = trial.suggest_categorical("n_estimators", [1000])
@@ -31,7 +31,7 @@ class RandomForestModel(SLModel):
 
         train_acc = self.top_1_acc(X_train, y_train)
         val_acc = self.top_1_acc(X_val, y_val)
-        return (val_acc, {"train": {"acc": train_acc}, "val": {"acc": val_acc}})
+        return {"train": {"acc": train_acc}, "val": {"acc": val_acc}}
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         return self._model.predict_proba(X)
@@ -49,12 +49,12 @@ class HGBTModel(SLModel):
         X_val: np.ndarray,
         y_val: np.ndarray,
         is_sweep: bool = True,
-    ) -> Tuple[float, Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         if not is_sweep:
             learning_rate = trial.suggest_categorical("learning_rate", [0.03])
         else:
-            learning_rate = trial.suggest_float("learning_rate", 0.01, 10, log=True)
+            learning_rate = trial.suggest_float("learning_rate", 0.01, 1.0, log=True)
         max_depth = trial.suggest_categorical("max_depth", [None])
         max_iter = trial.suggest_categorical("max_iter", [300])
 
@@ -67,7 +67,7 @@ class HGBTModel(SLModel):
 
         train_acc = self.top_1_acc(X_train, y_train)
         val_acc = self.top_1_acc(X_val, y_val)
-        return (val_acc, {"train": {"acc": train_acc}, "val": {"acc": val_acc}})
+        return {"train": {"acc": train_acc}, "val": {"acc": val_acc}}
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         with np.errstate(divide="ignore"):

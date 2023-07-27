@@ -2,7 +2,7 @@ import numpy as np
 import optuna
 
 import abc
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 
 class Model(abc.ABC):
@@ -35,7 +35,7 @@ class SLModel(Model):
         X_val: np.ndarray,
         y_val: np.ndarray,
         **kwargs: Dict[str, Any],
-    ) -> Tuple[float, Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """
         :param run: WandB run object
         :param trial: Optuna trial object
@@ -43,7 +43,7 @@ class SLModel(Model):
         :param y_train: labels of training data
         :param X_val: validation data
         :param y_val: labels of validation data
-        :return: objective score
+        :return: log metrics
         """
         raise NotImplementedError()
 
@@ -62,7 +62,7 @@ class SemiSLModel(Model):
         X_val: np.ndarray,
         y_val: np.ndarray,
         **kwargs: Dict[str, Any],
-    ) -> Tuple[float, Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """
         :param run: WandB run object
         :param trial: Optuna trial object
@@ -71,6 +71,6 @@ class SemiSLModel(Model):
         :param X_train_ul: training data (unlabelled)
         :param X_val: validation data
         :param y_val: labels of validation data
-        :return: objective score
+        :return: log metrics
         """
         raise NotImplementedError()

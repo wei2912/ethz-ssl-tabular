@@ -4,7 +4,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 from . import SLModel
 from log_utils import Stepwise
@@ -80,7 +80,7 @@ class MLPModel(SLModel):
         X_val: np.ndarray,
         y_val: np.ndarray,
         **_
-    ) -> Tuple[float, Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         input_size = X_train.shape[1]
         # FIXME: should contain all classes with high prob.
         n_classes = len(np.unique(y_val))
@@ -177,29 +177,26 @@ class MLPModel(SLModel):
 
         train_acc = self.top_1_acc(X_train, y_train)
         val_acc = self.top_1_acc(X_val, y_val)
-        return (
-            val_acc,
-            {
-                "train": {
-                    "acc": train_acc,
-                    "batch_size": batch_size,
-                    "max_epochs": N_ITER // n_iter_per_epoch,
-                    "policy": {
-                        "patience": patience,
-                        "factor": factor,
-                    },
-                    "per_epoch": {
-                        "lrs": Stepwise(lrs),
-                        "train_losses": Stepwise(train_losses),
-                        "train_accs": Stepwise(train_accs),
-                        "val_losses": Stepwise(val_losses),
-                        "val_accs": Stepwise(val_accs),
-                    },
-                    "size": len(X_train),
+        return {
+            "train": {
+                "acc": train_acc,
+                "batch_size": batch_size,
+                "max_epochs": N_ITER // n_iter_per_epoch,
+                "policy": {
+                    "patience": patience,
+                    "factor": factor,
                 },
-                "val": {"acc": val_acc, "size": len(X_val)},
+                "per_epoch": {
+                    "lrs": Stepwise(lrs),
+                    "train_losses": Stepwise(train_losses),
+                    "train_accs": Stepwise(train_accs),
+                    "val_losses": Stepwise(val_losses),
+                    "val_accs": Stepwise(val_accs),
+                },
+                "size": len(X_train),
             },
-        )
+            "val": {"acc": val_acc, "size": len(X_val)},
+        }
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         self._mlp.eval()
