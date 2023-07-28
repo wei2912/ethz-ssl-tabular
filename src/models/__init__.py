@@ -1,11 +1,23 @@
 import numpy as np
+import numpy.typing as npt
 import optuna
+import pandas as pd
 
 import abc
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 
 class Model(abc.ABC):
+    def preprocess_data(
+        self, X: pd.DataFrame, y: pd.Series
+    ) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.int8]]:
+        """
+        :param X: input dataframe
+        :param y: labels of input data
+        :return: processed input data and labels
+        """
+        return (X.to_numpy(dtype=np.float32), y.cat.codes.to_numpy(dtype=np.int8))
+
     @abc.abstractmethod
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         """

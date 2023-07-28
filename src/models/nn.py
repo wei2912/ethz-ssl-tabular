@@ -1,10 +1,13 @@
 import numpy as np
+import numpy.typing as npt
 import optuna
+import pandas as pd
+from sklearn.preprocessing import QuantileTransformer
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from . import SLModel
 from log_utils import Stepwise
@@ -62,7 +65,7 @@ class MLP(nn.Module):
 
 MAX_BATCH_SIZE = 128
 N_ITER = 1000
-SEED = 654321
+SEED = 123456
 
 
 class MLPModel(SLModel):
@@ -71,6 +74,18 @@ class MLPModel(SLModel):
 
         self._is_device_cuda = torch.cuda.is_available()
         self._device = torch.device("cuda" if self._is_device_cuda else "cpu")
+
+    def preprocess_data(
+        self, X: pd.DataFrame, y: pd.Series
+    ) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.int8]]:
+        # transformation adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 4
+        qt = QuantileTransformer(output_distribution="normal", random_state=SEED)
+        cols = X.select_dtypes("number").columns.tolist()
+        X[cols] = qt.fit_transform(X[cols].to_numpy())
+
+        X = pd.get_dummies(X, dtype=np.float32)
+
+        return (X.to_numpy(dtype=np.float32), y.cat.codes.to_numpy(dtype=np.int8))
 
     def train(
         self,

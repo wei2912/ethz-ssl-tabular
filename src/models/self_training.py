@@ -1,8 +1,9 @@
 import numpy as np
 from optuna.trial import Trial
+import pandas as pd
 
 import math
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from . import SemiSLModel, SLModel
 
@@ -15,6 +16,11 @@ class SelfTrainingModel_ThresholdSingleIterate(SemiSLModel):
         """
         super().__init__()
         self.base_model_fn = base_model_fn
+
+    def preprocess_data(
+        self, X: pd.DataFrame, y: pd.Series
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        return self.base_model_fn().preprocess_data(X, y)
 
     def train_ssl(
         self,
@@ -78,6 +84,11 @@ class SelfTrainingModel_CurriculumSingleIterate(SemiSLModel):
         """
         super().__init__()
         self.base_model_fn = base_model_fn
+
+    def preprocess_data(
+        self, X: pd.DataFrame, y: pd.Series
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        return self.base_model_fn().preprocess_data(X, y)
 
     def train_ssl(
         self,
@@ -149,6 +160,11 @@ class SelfTrainingModel_Curriculum(SemiSLModel):
         """
         super().__init__()
         self.base_model_fn = base_model_fn
+
+    def preprocess_data(
+        self, X: pd.DataFrame, y: pd.Series
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        return self.base_model_fn().preprocess_data(X, y)
 
     def train_ssl(
         self,

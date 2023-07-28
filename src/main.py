@@ -1,10 +1,10 @@
+from imblearn.datasets import make_imbalance
+import numpy as np
 import openml
 import optuna
 from optuna.integration.wandb import WeightsAndBiasesCallback
-import numpy as np
 import pandas as pd
 from sklearn.model_selection import StratifiedShuffleSplit, train_test_split
-from sklearn.preprocessing import QuantileTransformer
 from tqdm.auto import tqdm
 import wandb
 
@@ -12,7 +12,7 @@ import argparse
 import itertools
 import os
 import random
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from log_utils import Stepwise, flatten_metrics
 from models import SemiSLModel, SLModel
@@ -48,9 +48,11 @@ DATASETS: Dict[str, int] = {
     "gas-drift-different-concentrations": 1477,
     # 98k samples, 29 features, 2 classes
     "higgs": 23512,
+    # 581k samples, 55 features, 7 classes
+    "covertype": 1596,
 }
 
-N_TEST: int = 10000
+N_TEST: int = 1000
 N_TRAIN: int = 2000
 VAL_SPLIT: float = 0.3
 
@@ -72,6 +74,18 @@ L_UL_SPLITS: List[Tuple[float, float]] = list(
 def preload_data(_) -> None:
     for dataset_id in DATASETS.values():
         openml.datasets.get_dataset(dataset_id)
+
+
+def balance_data(
+    X: pd.DataFrame, y: pd.Series, random_state: Optional[int] = None
+) -> Tuple[pd.DataFrame, pd.Series]:
+    n_samples = y.value_counts().min()
+    return make_imbalance(
+        X,
+        y,
+        sampling_strategy={label: n_samples for label in y.unique()},
+        random_state=random_state,
+    )
 
 
 def convert_metrics(
@@ -99,16 +113,18 @@ def main(args: argparse.Namespace) -> None:
     entity: str
     prefix: str
     seed: int
-    n_sweep: int
-    dataset_name, model_name, entity, prefix, seed, n_sweep = (
+    n_trial: int
+    is_sweep: bool
+    dataset_name, model_name, entity, prefix, seed, n_trial, is_sweep = (
         args.dataset,
         args.model,
         args.entity,
         args.prefix,
         args.seed,
-        args.n_sweep,
+        args.n_trial,
+        args.sweep,
     )
-    assert n_sweep > 0
+    assert n_trial > 0
 
     os.environ["WANDB_SILENT"] = "true"
 
@@ -119,11 +135,8 @@ def main(args: argparse.Namespace) -> None:
     )
     assert isinstance(X, pd.DataFrame)
     assert isinstance(y, pd.Series)
-    X, y = X.to_numpy(), y.cat.codes.to_numpy()
-
-    # transformation adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 4
-    qt = QuantileTransformer(output_distribution="normal", random_state=seed)
-    X_t = qt.fit_transform(X, y)
+    X_bd, y_bd = balance_data(X, y, random_state=seed)
+    X_pp, y_pp = MODELS[model_name]().preprocess_data(X_bd, y_bd)
 
     project_name = f"{prefix}{dataset_name}"
 
@@ -134,11 +147,17 @@ def main(args: argparse.Namespace) -> None:
     print(f"Model: {model_name}")
     print("---")
     print(f"Seed: {seed}")
-    print(f"No. of hyperparameter sweeps: {n_sweep}")
+    print(f"No. of trials: {n_trial}")
+    print(f"Do hyperparameter sweep?: {is_sweep}")
     print("===")
 
     X_train_val, X_test, y_train_val, y_test = train_test_split(
-        X_t, y, train_size=N_TRAIN, test_size=N_TEST, random_state=seed
+        X_pp,
+        y_pp,
+        train_size=N_TRAIN,
+        test_size=N_TEST,
+        stratify=y_pp,
+        random_state=seed,
     )
     print(f"> Train/Test Split: {len(X_train_val)}/{len(X_test)}")
 
@@ -161,7 +180,7 @@ def main(args: argparse.Namespace) -> None:
                     "l_split": l_split,
                     "ul_split": ul_split,
                     "seed": seed,
-                    "n_sweep": n_sweep,
+                    "n_trial": n_trial,
                 },
                 "entity": entity,
                 "project": project_name,
@@ -182,6 +201,7 @@ def main(args: argparse.Namespace) -> None:
                 y_train_val,
                 train_size=l_split,
                 test_size=ul_split,
+                stratify=y_train_val,
                 random_state=seed,
             )
         elif l_split < 1.0 and ul_split == 0.0:
@@ -189,6 +209,7 @@ def main(args: argparse.Namespace) -> None:
                 X_train_val,
                 y_train_val,
                 train_size=l_split,
+                stratify=y_train_val,
                 random_state=seed,
             )
             X_train_ul, y_train_ul = np.array([]), np.array([])
@@ -223,7 +244,6 @@ def main(args: argparse.Namespace) -> None:
 
         @wandbc.track_in_wandb()
         def objective_fn(trial: optuna.trial.Trial) -> Tuple[float, Dict[str, Any]]:
-            is_sweep = n_sweep > 1
             model = MODELS[model_name]()
 
             if is_sl_model:
@@ -248,20 +268,24 @@ def main(args: argparse.Namespace) -> None:
             run_metricss[trial.number] = run_metrics
             test_metricss[trial.number] = test_metrics
 
-            wandb.log(
-                {
-                    f"trial{trial.number}": {
-                        "run": run_metrics,
-                        "test": test_metrics,
-                        "params": trial.params,
+            non_step_metric_dict, step_metric_dicts = convert_metrics(
+                flatten_metrics(
+                    {
+                        f"trial{trial.number}": {
+                            "run": run_metrics,
+                            "test": test_metrics,
+                            "params": trial.params,
+                        },
                     }
-                }
+                )
             )
+            for metric_dict in [non_step_metric_dict] + step_metric_dicts:
+                wandb.log(metric_dict)
             return test_acc
 
         study.optimize(
             objective_fn,
-            n_trials=n_sweep,
+            n_trials=n_trial,
             callbacks=[wandbc],
         )
 
@@ -278,9 +302,8 @@ def main(args: argparse.Namespace) -> None:
                 }
             )
         )
-        wandb.log(non_step_metric_dict)
-        for step_metric_dict in step_metric_dicts:
-            wandb.log(step_metric_dict)
+        for metric_dict in [non_step_metric_dict] + step_metric_dicts:
+            wandb.log(metric_dict)
 
         wandb.finish()
 
@@ -300,7 +323,10 @@ if __name__ == "__main__":
     parser_run.add_argument("--model", type=str, choices=MODELS.keys(), required=True)
     parser_run.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
     parser_run.add_argument("--seed", type=int, default=0)
-    parser_run.add_argument("--n-sweep", type=int, default=5)
+    parser_run.add_argument("--n-trial", type=int, default=5)
+    parser_run.add_argument(
+        "--sweep", default=False, action=argparse.BooleanOptionalAction
+    )
     parser_run.set_defaults(func=main)
 
     args = parser.parse_args()
