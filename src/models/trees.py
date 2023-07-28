@@ -58,11 +58,13 @@ class HGBTModel(SLModel):
             learning_rate = trial.suggest_float("learning_rate", 0.01, 1.0, log=True)
             max_iter = trial.suggest_int("max_iter", 50, 500, log=True)
         max_depth = trial.suggest_categorical("max_depth", [None])
+        min_samples_leaf = trial.suggest_categorical("min_samples_leaf", [5])
 
         model = HistGradientBoostingClassifier(
             learning_rate=learning_rate,
             max_depth=max_depth,
             max_iter=max_iter,
+            min_samples_leaf=min_samples_leaf,
         )
         self._model = model.fit(X_train, y_train)
 
