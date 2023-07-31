@@ -25,8 +25,10 @@ class RandomForestModel(SLModel):
             min_samples_leaf = trial.suggest_categorical("min_samples_leaf", [1])
         else:
             max_depth = trial.suggest_categorical("max_depth", [None, 2, 3, 4, 5])
-            n_estimators = trial.suggest_int("n_estimators", 10, 3000, log=True)
-            min_samples_leaf = trial.suggest_int("min_samples_leaf", 1, 5)
+            n_estimators = trial.suggest_categorical(
+                "n_estimators", [10, 100, 300, 500, 1000]
+            )
+            min_samples_leaf = trial.suggest_int("min_samples_leaf", 1, 5, log=True)
 
         model = RandomForestClassifier(
             max_depth=max_depth,
@@ -65,8 +67,10 @@ class HGBTModel(SLModel):
             max_iter = trial.suggest_categorical("max_iter", [300])
         else:
             max_depth = trial.suggest_categorical("max_depth", [None, 2, 3, 4, 5])
-            learning_rate = trial.suggest_float("learning_rate", 0.01, 1.0, log=True)
-            max_iter = trial.suggest_int("max_iter", 50, 500, log=True)
+            learning_rate = trial.suggest_categorical(
+                "learning_rate", [0.01, 0.1, 0.3, 0.5, 1.0]
+            )
+            max_iter = trial.suggest_int("max_iter", 100, 300, log=True, step=50)
         min_samples_leaf = trial.suggest_categorical("min_samples_leaf", [5])
 
         model = HistGradientBoostingClassifier(

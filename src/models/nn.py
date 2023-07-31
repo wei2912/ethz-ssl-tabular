@@ -109,13 +109,14 @@ class MLPModel(SLModel):
             lr = trial.suggest_categorical("lr", [0.1])
         else:
             dropout_p = trial.suggest_categorical(
-                "dropout_p", [0, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3]
+                "dropout_p",
+                [0, 0.001, 0.01, 0.1, 0.3],
             )
-            n_blocks = trial.suggest_int("n_blocks", 2, 6)
+            n_blocks = trial.suggest_int("n_blocks", 3, 6, log=True)
             layer_size = trial.suggest_categorical(
-                "layer_size", [32, 64, 128, 192, 256]
+                "layer_size", [64, 96, 128, 192, 256]
             )
-            lr = trial.suggest_float("lr", 0.01, 0.3, log=True)
+            lr = trial.suggest_categorical("lr", [0.01, 0.03, 0.05, 0.1, 0.3])
 
         self._mlp = MLP(input_size, n_class, n_blocks, layer_size, dropout_p).to(
             self._device
