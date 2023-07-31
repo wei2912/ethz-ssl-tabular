@@ -119,7 +119,7 @@ class MLPModel(SLModel):
             lr = trial.suggest_categorical("lr", [0.01, 0.03, 0.05, 0.1, 0.3])
 
         self._mlp = MLP(input_size, n_class, n_blocks, layer_size, dropout_p).to(
-            self._device
+            self._device, non_blocking=True
         )
 
         train_loader = DataLoader(
@@ -163,8 +163,8 @@ class MLPModel(SLModel):
 
                 self._mlp.train()
 
-                X_train_b = X_train_b.to(self._device)
-                y_train_b = y_train_b.to(self._device)
+                X_train_b = X_train_b.to(self._device, non_blocking=True)
+                y_train_b = y_train_b.to(self._device, non_blocking=True)
 
                 optimizer.zero_grad()
 
@@ -185,8 +185,8 @@ class MLPModel(SLModel):
 
                 val_loss = 0.0
                 for X_val_b, y_val_b in val_loader:
-                    X_val_b = X_val_b.to(self._device)
-                    y_val_b = y_val_b.to(self._device)
+                    X_val_b = X_val_b.to(self._device, non_blocking=True)
+                    y_val_b = y_val_b.to(self._device, non_blocking=True)
 
                     z_val_b = self._mlp(X_val_b)
                     val_loss += criterion(z_val_b, y_val_b).item() / len(X_val_b)
@@ -235,7 +235,7 @@ class MLPModel(SLModel):
 
         probss = []
         for (X_b,) in loader:
-            X_b = X_b.to(self._device)
+            X_b = X_b.to(self._device, non_blocking=True)
             probss.append(self._mlp(X_b).detach().cpu().numpy())
 
         return np.concatenate(probss)
