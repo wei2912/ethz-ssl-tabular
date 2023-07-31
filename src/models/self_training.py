@@ -41,9 +41,7 @@ class SelfTrainingModel_ThresholdSingleIterate(SemiSLModel):
         if not is_sweep:
             prob_threshold = trial.suggest_categorical("prob_threshold", [0.9])
         else:
-            prob_threshold = trial.suggest_categorical(
-                "prob_threshold", [0.5, 0.75, 0.9, 0.95, 0.99]
-            )
+            prob_threshold = trial.suggest_float("prob_threshold", 0.5, 0.99, step=0.01)
 
         self._model = self.base_model_fn()
         metrics["initial"] = self._model.train(

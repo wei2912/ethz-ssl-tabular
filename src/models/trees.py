@@ -24,9 +24,12 @@ class RandomForestModel(SLModel):
             n_estimators = trial.suggest_categorical("n_estimators", [300])
             min_samples_leaf = trial.suggest_categorical("min_samples_leaf", [1])
         else:
-            max_depth = trial.suggest_categorical("max_depth", [None, 2, 3, 4, 5])
-            n_estimators = trial.suggest_categorical(
-                "n_estimators", [10, 100, 300, 500, 1000]
+            max_depth = trial.suggest_categorical("max_depth", [None, 3, 4, 5, 6])
+            n_estimators = trial.suggest_int(
+                "n_estimators",
+                100,
+                1000,
+                step=50,
             )
             min_samples_leaf = trial.suggest_int("min_samples_leaf", 1, 5, log=True)
 
@@ -63,18 +66,16 @@ class HGBTModel(SLModel):
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         if not is_sweep:
             max_depth = trial.suggest_categorical("max_depth", [None])
-            learning_rate = trial.suggest_categorical("learning_rate", [0.03])
+            lr = trial.suggest_categorical("lr", [0.03])
             max_iter = trial.suggest_categorical("max_iter", [300])
         else:
-            max_depth = trial.suggest_categorical("max_depth", [None, 2, 3, 4, 5])
-            learning_rate = trial.suggest_categorical(
-                "learning_rate", [0.01, 0.1, 0.3, 0.5, 1.0]
-            )
-            max_iter = trial.suggest_int("max_iter", 100, 300, log=True, step=50)
+            max_depth = trial.suggest_categorical("max_depth", [None, 3, 4, 5, 6])
+            lr = trial.suggest_float("lr", 0.01, 1.0, log=True)
+            max_iter = trial.suggest_int("max_iter", 100, 300, step=25)
         min_samples_leaf = trial.suggest_categorical("min_samples_leaf", [5])
 
         model = HistGradientBoostingClassifier(
-            learning_rate=learning_rate,
+            learning_rate=lr,
             max_depth=max_depth,
             max_iter=max_iter,
             min_samples_leaf=min_samples_leaf,
