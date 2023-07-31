@@ -247,6 +247,7 @@ def run_sweep(args: argparse.Namespace) -> None:
             "project": project_name,
             "group": f"{model_name}",
         },
+        as_multirun=True,
     )
 
     run_metricss_0 = {}
@@ -320,11 +321,11 @@ def run_sweep(args: argparse.Namespace) -> None:
 
         non_step_metric_dict, step_metric_dicts = convert_metrics(
             {
-                f"trial{trial.number}": {
-                    "run_0": run_metrics_0,
-                    "run_1": run_metrics_1,
-                    "params": trial.params,
-                },
+                "run_0": run_metrics_0,
+                "run_1": run_metrics_1,
+                "params": trial.params,
+                "test_0": {"acc": test_acc_0},
+                "test_1": {"acc": test_acc_1},
             }
         )
         for metric_dict in [non_step_metric_dict] + step_metric_dicts:
@@ -334,23 +335,6 @@ def run_sweep(args: argparse.Namespace) -> None:
     study.optimize(
         objective_fn, n_trials=n_sweep, callbacks=[wandbc], show_progress_bar=True
     )
-
-    for i, best_trial in enumerate(study.best_trials):
-        non_step_metric_dict, step_metric_dicts = convert_metrics(
-            {
-                f"best{i}": {
-                    "trial": best_trial.number,
-                    "params": best_trial.params,
-                    "value": best_trial.values,
-                    "run_0": run_metricss_0[best_trial.number],
-                    "run_1": run_metricss_1[best_trial.number],
-                },
-            }
-        )
-        for metric_dict in [non_step_metric_dict] + step_metric_dicts:
-            wandb.log(metric_dict)
-
-    wandb.finish()
 
 
 if __name__ == "__main__":
@@ -379,7 +363,7 @@ if __name__ == "__main__":
     parser_sweep.add_argument("--model", type=str, choices=MODELS.keys(), required=True)
     parser_sweep.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
     parser_sweep.add_argument("--seed", type=int, default=1000)
-    parser_sweep.add_argument("--n-sweep", type=int, default=50)
+    parser_sweep.add_argument("--n-sweep", type=int, default=100)
     parser_sweep.set_defaults(func=run_sweep)
 
     args = parser.parse_args()
