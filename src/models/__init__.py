@@ -4,7 +4,7 @@ import optuna
 import pandas as pd
 
 import abc
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Union
 
 from utils.typing import Dataset
 
@@ -45,6 +45,7 @@ class SLModel(Model):
         trial: optuna.trial.Trial,
         train: Dataset,
         val: Dataset,
+        is_sweep: bool,
         **kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
@@ -52,6 +53,7 @@ class SLModel(Model):
         :param trial: Optuna trial object
         :param train: training dataset
         :param val: validation dataset
+        :param is_sweep: flag indicating if performing hyperparameter sweeps
         :return: log metrics
         """
         raise NotImplementedError()
@@ -68,6 +70,7 @@ class SemiSLModel(Model):
         train_l: Dataset,
         train_ul: Union[Dataset, npt.NDArray[np.float32]],
         val: Dataset,
+        is_sweep: bool,
         **kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
@@ -78,6 +81,7 @@ class SemiSLModel(Model):
         the corresponding labels (not used for training), or as np.ndarray without the
         corresponding labels
         :param val: validation data
+        :param is_sweep: flag indicating if performing hyperparameter sweeps
         :return: log metrics
         """
         raise NotImplementedError()

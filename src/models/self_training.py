@@ -28,7 +28,7 @@ class SelfTrainingModel_ThresholdSingleIterate(SemiSLModel):
         train_l: Dataset,
         train_ul: Union[Dataset, npt.NDArray[np.float32]],
         val: Dataset,
-        is_sweep: bool = False,
+        is_sweep: bool,
     ) -> Dict[str, Any]:
         X_train_l, y_train_l = train_l
         X_train_ul, y_train_ul = (
@@ -45,7 +45,7 @@ class SelfTrainingModel_ThresholdSingleIterate(SemiSLModel):
 
         self._model = self.base_model_fn()
         metrics["initial"] = self._model.train(
-            trial, (X_train_l, y_train_l), (X_val, y_val), is_sweep=is_sweep
+            trial, (X_train_l, y_train_l), (X_val, y_val), is_sweep
         )
 
         y_pl_probs = self._model.predict_proba(X_train_ul)
@@ -63,9 +63,7 @@ class SelfTrainingModel_ThresholdSingleIterate(SemiSLModel):
         X = np.concatenate((X_train_l, X_train_pl))
         y = np.concatenate((y_train_l, y_train_pl))
 
-        new_metrics = self._model.train(
-            trial, (X, y), (X_val, y_val), is_sweep=is_sweep
-        )
+        new_metrics = self._model.train(trial, (X, y), (X_val, y_val), is_sweep)
 
         metrics["pl_iter0"] = {
             "size_ul": len(X_train_ul),
@@ -99,7 +97,7 @@ class SelfTrainingModel_CurriculumSingleIterate(SemiSLModel):
         train_l: Dataset,
         train_ul: Union[Dataset, npt.NDArray[np.float32]],
         val: Dataset,
-        is_sweep: bool = False,
+        is_sweep: bool,
     ) -> Dict[str, Any]:
         X_train_l, y_train_l = train_l
         X_train_ul, y_train_ul = (
@@ -112,7 +110,7 @@ class SelfTrainingModel_CurriculumSingleIterate(SemiSLModel):
 
         self._model = self.base_model_fn()
         metrics["initial"] = self._model.train(
-            trial, (X_train_l, y_train_l), (X_val, y_val), is_sweep=is_sweep
+            trial, (X_train_l, y_train_l), (X_val, y_val), is_sweep
         )
 
         y_pl_probs = self._model.predict_proba(X_train_ul)
@@ -138,9 +136,7 @@ class SelfTrainingModel_CurriculumSingleIterate(SemiSLModel):
         y = np.concatenate((y_train_l, y_train_pl))
 
         self._model = self.base_model_fn()
-        new_metrics = self._model.train(
-            trial, (X, y), (X_val, y_val), is_sweep=is_sweep
-        )
+        new_metrics = self._model.train(trial, (X, y), (X_val, y_val), is_sweep)
 
         metrics["pl_iter0"] = {
             "size_ul": len(X_train_ul),
@@ -178,7 +174,7 @@ class SelfTrainingModel_Curriculum(SemiSLModel):
         train_l: Dataset,
         train_ul: Union[Dataset, npt.NDArray[np.float32]],
         val: Dataset,
-        is_sweep: bool = False,
+        is_sweep: bool,
     ) -> Dict[str, Any]:
         X_train_l, y_train_l = train_l
         X_train_ul, y_train_ul = (
@@ -192,7 +188,10 @@ class SelfTrainingModel_Curriculum(SemiSLModel):
 
         self._model = self.base_model_fn()
         metrics["initial"] = self._model.train(
-            trial, (X_train_l, y_train_l), (X_val, y_val), is_sweep=is_sweep
+            trial,
+            (X_train_l, y_train_l),
+            (X_val, y_val),
+            is_sweep,
         )
 
         threshold = STEP_THRESHOLD
@@ -223,7 +222,10 @@ class SelfTrainingModel_Curriculum(SemiSLModel):
 
             self._model = self.base_model_fn()
             new_metrics = self._model.train(
-                trial, (X, y), (X_val, y_val), is_sweep=is_sweep
+                trial,
+                (X, y),
+                (X_val, y_val),
+                is_sweep,
             )
 
             metrics[f"pl_iter{i}"] = {

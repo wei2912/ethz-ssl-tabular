@@ -19,12 +19,15 @@ pandas = "^2.0.1"
 openml = "^0.14.0"
 optuna = "^3.2.0"
 imbalanced-learn = "^0.11.0"
+plotly = "^5.15.0"
+jupyterlab = "^4.0.3"
 
 [tool.poetry.group.dev.dependencies]
 black = {extras = ["jupyter"], version = "^23.3.0"}
 flake8 = "^6.0.0"
 pre-commit = "^3.3.2"
 poethepoet = "^0.20.0"
+nbdime = "^3.2.1"
 
 [tool.poe.tasks]
 force-cuda118 = "pip3 install torch==2.0.1 --index-url https://download.pytorch.org/whl/cu118"

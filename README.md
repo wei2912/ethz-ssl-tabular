@@ -16,3 +16,9 @@ $ poe force-cuda118 # install PyTorch w/ Cuda 11.8
 To enable the use of Git [pre-commit](https://pre-commit.com/) hooks, run the following command:
 
 $ pre-commit install
+
+## `nbdime` Setup
+
+To view Jupyter notebooks with [nbdime](https://github.com/jupyter/nbdime), configure the diff/merge drivers for this repository with the following command:
+
+$ nbdime config-git --enable

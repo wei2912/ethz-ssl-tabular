@@ -86,7 +86,12 @@ class MLPModel(SLModel):
         return (X.to_numpy(dtype=np.float32), y.cat.codes.to_numpy(dtype=np.int8))
 
     def train(
-        self, trial: optuna.trial.Trial, train: Dataset, val: Dataset, **_
+        self,
+        trial: optuna.trial.Trial,
+        train: Dataset,
+        val: Dataset,
+        is_sweep: bool,
+        **_
     ) -> Dict[str, Any]:
         X_train, y_train = train
         X_val, y_val = val
@@ -97,10 +102,20 @@ class MLPModel(SLModel):
         batch_size = min(MAX_BATCH_SIZE, len(X_train))
 
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
-        dropout_p = trial.suggest_categorical("dropout_p", [0])
-        n_blocks = trial.suggest_categorical("n_blocks", [4])
-        layer_size = trial.suggest_categorical("layer_size", [256])
-        lr = trial.suggest_categorical("lr", [0.1])
+        if not is_sweep:
+            dropout_p = trial.suggest_categorical("dropout_p", [0])
+            n_blocks = trial.suggest_categorical("n_blocks", [4])
+            layer_size = trial.suggest_categorical("layer_size", [256])
+            lr = trial.suggest_categorical("lr", [0.1])
+        else:
+            dropout_p = trial.suggest_categorical(
+                "dropout_p", [0, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3]
+            )
+            n_blocks = trial.suggest_int("n_blocks", 2, 6)
+            layer_size = trial.suggest_categorical(
+                "layer_size", [32, 64, 128, 192, 256]
+            )
+            lr = trial.suggest_float("lr", 0.01, 0.3, log=True)
 
         self._mlp = MLP(input_size, n_class, n_blocks, layer_size, dropout_p).to(
             self._device
