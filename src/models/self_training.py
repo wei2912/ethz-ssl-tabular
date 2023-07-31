@@ -1,11 +1,13 @@
 import numpy as np
+import numpy.typing as npt
 from optuna.trial import Trial
 import pandas as pd
 
 import math
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Union
 
 from . import SemiSLModel, SLModel
+from utils.typing import Dataset
 
 
 class SelfTrainingModel_ThresholdSingleIterate(SemiSLModel):
@@ -17,22 +19,23 @@ class SelfTrainingModel_ThresholdSingleIterate(SemiSLModel):
         super().__init__()
         self.base_model_fn = base_model_fn
 
-    def preprocess_data(
-        self, X: pd.DataFrame, y: pd.Series
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    def preprocess_data(self, X: pd.DataFrame, y: pd.Series) -> Dataset:
         return self.base_model_fn().preprocess_data(X, y)
 
     def train_ssl(
         self,
         trial: Trial,
-        X_train: np.ndarray,
-        y_train: np.ndarray,
-        X_train_ul: np.ndarray,
-        X_val: np.ndarray,
-        y_val: np.ndarray,
-        is_sweep: bool = True,
-        y_train_ul: Optional[np.ndarray] = None,
+        train_l: Dataset,
+        train_ul: Union[Dataset, npt.NDArray[np.float32]],
+        val: Dataset,
+        is_sweep: bool = False,
     ) -> Dict[str, Any]:
+        X_train_l, y_train_l = train_l
+        X_train_ul, y_train_ul = (
+            train_ul if type(train_ul) is tuple else (train_ul, None)
+        )
+        X_val, y_val = val
+
         prob_threshold: float
         metrics: Dict[str, Any] = {}
         if not is_sweep:
@@ -42,7 +45,7 @@ class SelfTrainingModel_ThresholdSingleIterate(SemiSLModel):
 
         self._model = self.base_model_fn()
         metrics["initial"] = self._model.train(
-            trial, X_train, y_train, X_val, y_val, is_sweep=is_sweep
+            trial, (X_train_l, y_train_l), (X_val, y_val), is_sweep=is_sweep
         )
 
         y_pl_probs = self._model.predict_proba(X_train_ul)
@@ -57,10 +60,12 @@ class SelfTrainingModel_ThresholdSingleIterate(SemiSLModel):
             if y_train_ul is not None
             else None
         )
-        X = np.concatenate((X_train, X_train_pl))
-        y = np.concatenate((y_train, y_train_pl))
+        X = np.concatenate((X_train_l, X_train_pl))
+        y = np.concatenate((y_train_l, y_train_pl))
 
-        new_metrics = self._model.train(trial, X, y, X_val, y_val, is_sweep=is_sweep)
+        new_metrics = self._model.train(
+            trial, (X, y), (X_val, y_val), is_sweep=is_sweep
+        )
 
         metrics["pl_iter0"] = {
             "size_ul": len(X_train_ul),
@@ -85,28 +90,29 @@ class SelfTrainingModel_CurriculumSingleIterate(SemiSLModel):
         super().__init__()
         self.base_model_fn = base_model_fn
 
-    def preprocess_data(
-        self, X: pd.DataFrame, y: pd.Series
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    def preprocess_data(self, X: pd.DataFrame, y: pd.Series) -> Dataset:
         return self.base_model_fn().preprocess_data(X, y)
 
     def train_ssl(
         self,
         trial: Trial,
-        X_train: np.ndarray,
-        y_train: np.ndarray,
-        X_train_ul: np.ndarray,
-        X_val: np.ndarray,
-        y_val: np.ndarray,
-        is_sweep: bool = True,
-        y_train_ul: Optional[np.ndarray] = None,
+        train_l: Dataset,
+        train_ul: Union[Dataset, npt.NDArray[np.float32]],
+        val: Dataset,
+        is_sweep: bool = False,
     ) -> Dict[str, Any]:
+        X_train_l, y_train_l = train_l
+        X_train_ul, y_train_ul = (
+            train_ul if type(train_ul) is tuple else (train_ul, None)
+        )
+        X_val, y_val = val
+
         THRESHOLD: float = 0.2
         metrics: Dict[str, Any] = {}
 
         self._model = self.base_model_fn()
         metrics["initial"] = self._model.train(
-            trial, X_train, y_train, X_val, y_val, is_sweep=is_sweep
+            trial, (X_train_l, y_train_l), (X_val, y_val), is_sweep=is_sweep
         )
 
         y_pl_probs = self._model.predict_proba(X_train_ul)
@@ -128,11 +134,13 @@ class SelfTrainingModel_CurriculumSingleIterate(SemiSLModel):
             if y_train_ul is not None
             else None
         )
-        X = np.concatenate((X_train, X_train_pl))
-        y = np.concatenate((y_train, y_train_pl))
+        X = np.concatenate((X_train_l, X_train_pl))
+        y = np.concatenate((y_train_l, y_train_pl))
 
         self._model = self.base_model_fn()
-        new_metrics = self._model.train(trial, X, y, X_val, y_val, is_sweep=is_sweep)
+        new_metrics = self._model.train(
+            trial, (X, y), (X_val, y_val), is_sweep=is_sweep
+        )
 
         metrics["pl_iter0"] = {
             "size_ul": len(X_train_ul),
@@ -161,29 +169,30 @@ class SelfTrainingModel_Curriculum(SemiSLModel):
         super().__init__()
         self.base_model_fn = base_model_fn
 
-    def preprocess_data(
-        self, X: pd.DataFrame, y: pd.Series
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    def preprocess_data(self, X: pd.DataFrame, y: pd.Series) -> Dataset:
         return self.base_model_fn().preprocess_data(X, y)
 
     def train_ssl(
         self,
         trial: Trial,
-        X_train: np.ndarray,
-        y_train: np.ndarray,
-        X_train_ul: np.ndarray,
-        X_val: np.ndarray,
-        y_val: np.ndarray,
-        is_sweep: bool = True,
-        y_train_ul: Optional[np.ndarray] = None,
+        train_l: Dataset,
+        train_ul: Union[Dataset, npt.NDArray[np.float32]],
+        val: Dataset,
+        is_sweep: bool = False,
     ) -> Dict[str, Any]:
+        X_train_l, y_train_l = train_l
+        X_train_ul, y_train_ul = (
+            train_ul if type(train_ul) is tuple else (train_ul, None)
+        )
+        X_val, y_val = val
+
         STEP_THRESHOLD: float = 0.2
 
         metrics = {}
 
         self._model = self.base_model_fn()
         metrics["initial"] = self._model.train(
-            trial, X_train, y_train, X_val, y_val, is_sweep=is_sweep
+            trial, (X_train_l, y_train_l), (X_val, y_val), is_sweep=is_sweep
         )
 
         threshold = STEP_THRESHOLD
@@ -209,12 +218,12 @@ class SelfTrainingModel_Curriculum(SemiSLModel):
                 if y_train_ul is not None
                 else None
             )
-            X = np.concatenate((X_train, X_train_pl))
-            y = np.concatenate((y_train, y_train_pl))
+            X = np.concatenate((X_train_l, X_train_pl))
+            y = np.concatenate((y_train_l, y_train_pl))
 
             self._model = self.base_model_fn()
             new_metrics = self._model.train(
-                trial, X, y, X_val, y_val, is_sweep=is_sweep
+                trial, (X, y), (X_val, y_val), is_sweep=is_sweep
             )
 
             metrics[f"pl_iter{i}"] = {

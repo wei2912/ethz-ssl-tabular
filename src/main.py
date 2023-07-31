@@ -1,20 +1,16 @@
-from imblearn.datasets import make_imbalance
-import numpy as np
 import openml
 import optuna
-from optuna.integration.wandb import WeightsAndBiasesCallback
-import pandas as pd
-from sklearn.model_selection import StratifiedShuffleSplit, train_test_split
+from optuna.integration import WeightsAndBiasesCallback
 from tqdm.auto import tqdm
 import wandb
 
 import argparse
-import itertools
 import os
-import random
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Tuple, Union
+import warnings
 
-from log_utils import Stepwise, flatten_metrics
+from utils.data import get_splits, prepare_train_test_val, prepare_l_ul
+from utils.logging import convert_metrics
 from models import SemiSLModel, SLModel
 from models.nn import MLPModel
 from models.self_training import (
@@ -52,95 +48,34 @@ DATASETS: Dict[str, int] = {
     "covertype": 1596,
 }
 
-N_TEST: int = 1000
-N_TRAIN: int = 2000
-VAL_SPLIT: float = 0.3
-
-SMALL_SPLIT_VALS: List[float] = [0.05 * x for x in range(4, 0, -1)]
-LARGE_SPLIT_VALS: List[float] = [0.25 * x for x in range(4, 0, -1)]
-L_SPLITS: List[float] = LARGE_SPLIT_VALS + SMALL_SPLIT_VALS
-L_UL_SPLITS: List[Tuple[float, float]] = list(
-    filter(
-        lambda t: t[0] + t[1] <= 1,
-        itertools.chain(
-            itertools.product(LARGE_SPLIT_VALS, LARGE_SPLIT_VALS),
-            itertools.product(SMALL_SPLIT_VALS, LARGE_SPLIT_VALS),
-            itertools.product(SMALL_SPLIT_VALS, SMALL_SPLIT_VALS),
-        ),
-    )
-)
-
 
 def preload_data(_) -> None:
     for dataset_id in DATASETS.values():
         openml.datasets.get_dataset(dataset_id)
 
 
-def balance_data(
-    X: pd.DataFrame, y: pd.Series, random_state: Optional[int] = None
-) -> Tuple[pd.DataFrame, pd.Series]:
-    n_samples = y.value_counts().min()
-    return make_imbalance(
-        X,
-        y,
-        sampling_strategy={label: n_samples for label in y.unique()},
-        random_state=random_state,
-    )
-
-
-def convert_metrics(
-    metrics: Dict[str, Any]
-) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
-    max_steps = max(
-        (len(val) for val in metrics.values() if isinstance(val, Stepwise)),
-        default=0,
-    )
-    non_step_metric_dict = {}
-    step_metric_dicts = [{} for _ in range(max_steps)]
-    for key, val in metrics.items():
-        if isinstance(val, Stepwise):
-            for i, val_item in enumerate(val):
-                step_metric_dicts[i][key] = val_item
-        else:
-            non_step_metric_dict[key] = val
-
-    return (non_step_metric_dict, step_metric_dicts)
-
-
-def main(args: argparse.Namespace) -> None:
+def run_eval(args: argparse.Namespace) -> None:
     dataset_name: str
     model_name: str
     entity: str
     prefix: str
     seed: int
     n_trial: int
-    is_sweep: bool
-    dataset_name, model_name, entity, prefix, seed, n_trial, is_sweep = (
+    dataset_name, model_name, entity, prefix, seed, n_trial = (
         args.dataset,
         args.model,
         args.entity,
         args.prefix,
         args.seed,
         args.n_trial,
-        args.sweep,
     )
     assert n_trial > 0
 
-    os.environ["WANDB_SILENT"] = "true"
-
     dataset_id = DATASETS[dataset_name]
-    dataset = openml.datasets.get_dataset(dataset_id)
-    X, y, _, _ = dataset.get_data(
-        target=dataset.default_target_attribute, dataset_format="dataframe"
-    )
-    assert isinstance(X, pd.DataFrame)
-    assert isinstance(y, pd.Series)
-    X_bd, y_bd = balance_data(X, y, random_state=seed)
-    X_pp, y_pp = MODELS[model_name]().preprocess_data(X_bd, y_bd)
-
     project_name = f"{prefix}{dataset_name}"
 
     print("===")
+    print("*** run_eval ***")
     print(f"Project: {project_name}")
     print(f"Dataset: {dataset_name}")
     print(f"Dataset ID: {dataset_id}")
@@ -148,33 +83,18 @@ def main(args: argparse.Namespace) -> None:
     print("---")
     print(f"Seed: {seed}")
     print(f"No. of trials: {n_trial}")
-    print(f"Do hyperparameter sweep?: {is_sweep}")
-    print("===")
+    print("---")
 
-    X_train_val, X_test, y_train_val, y_test = train_test_split(
-        X_pp,
-        y_pp,
-        train_size=N_TRAIN,
-        test_size=N_TEST,
-        stratify=y_pp,
-        random_state=seed,
+    (X_train, y_train), (X_test, y_test), (X_val, y_val) = prepare_train_test_val(
+        dataset_id, seed, preprocess_func=MODELS[model_name]().preprocess_data
     )
-    print(f"> Train/Test Split: {len(X_train_val)}/{len(X_test)}")
 
-    is_sl_model = isinstance(MODELS[model_name](), SLModel)
-    is_semisl_model = isinstance(MODELS[model_name](), SemiSLModel)
+    print(f"> Train/Test/Val Split: {len(X_train)}/{len(X_test)}/{len(X_val)}")
 
-    splits: List[Tuple[float, float]]
-    if is_sl_model:
-        splits = zip(L_SPLITS, itertools.cycle([0.0]))
-    elif is_semisl_model:
-        splits = L_UL_SPLITS
-    else:
-        raise NotImplementedError("model type not supported")
-
-    for l_split, ul_split in tqdm(splits):
+    for l_split, ul_split in tqdm(get_splits(MODELS[model_name]())):
         wandbc = WeightsAndBiasesCallback(
             wandb_kwargs={
+                "job_type": "run_eval",
                 "config": {
                     "model": model_name,
                     "l_split": l_split,
@@ -191,53 +111,15 @@ def main(args: argparse.Namespace) -> None:
         run_metricss = {}
         test_metricss = {}
 
-        assert l_split > 0.0
-        assert ul_split >= 0.0
-        assert l_split + ul_split <= 1.0
+        (X_train_l, y_train_l), (X_train_ul, y_train_ul) = prepare_l_ul(
+            (X_train, y_train), l_split, ul_split, seed
+        )
 
-        if l_split < 1.0 and ul_split > 0.0:
-            X_train_l, X_train_ul, y_train_l, y_train_ul = train_test_split(
-                X_train_val,
-                y_train_val,
-                train_size=l_split,
-                test_size=ul_split,
-                stratify=y_train_val,
-                random_state=seed,
-            )
-        elif l_split < 1.0 and ul_split == 0.0:
-            X_train_l, _, y_train_l, _ = train_test_split(
-                X_train_val,
-                y_train_val,
-                train_size=l_split,
-                stratify=y_train_val,
-                random_state=seed,
-            )
-            X_train_ul, y_train_ul = np.array([]), np.array([])
-        elif l_split == 1.0:
-            l_ids = random.Random(seed).sample(
-                range(len(X_train_val)), k=len(X_train_val)
-            )
-            X_train_l, y_train_l = X_train_val[l_ids], y_train_val[l_ids]
-            X_train_ul, y_train_ul = np.array([]), np.array([])
-
-        print("---")
         print(
             f">> L/UL Split: {len(X_train_l)}/{len(X_train_ul)} "
             f"({l_split:.3}/{ul_split:.3})"
         )
 
-        sss = StratifiedShuffleSplit(n_splits=1, test_size=VAL_SPLIT, random_state=seed)
-        train_ids, val_ids = next(sss.split(X_train_l, y_train_l))
-        X_train, y_train = X_train_l[train_ids], y_train_l[train_ids]
-        X_val, y_val = X_train_l[val_ids], y_train_l[val_ids]
-
-        print(
-            f">> Train/Val Split: {len(X_train)}/{len(X_val)} "
-            f"({1 - VAL_SPLIT:.3}/{VAL_SPLIT:.3})"
-        )
-
-        # FIXME - if using a score-dependent sampler, then a separate validation set
-        # needs to be used instead of the current method of returning the test accuracy
         study = optuna.create_study(
             direction="maximize", sampler=optuna.samplers.RandomSampler()
         )
@@ -245,43 +127,38 @@ def main(args: argparse.Namespace) -> None:
         @wandbc.track_in_wandb()
         def objective_fn(trial: optuna.trial.Trial) -> Tuple[float, Dict[str, Any]]:
             model = MODELS[model_name]()
-
-            if is_sl_model:
+            if isinstance(model, SLModel):
                 run_metrics = model.train(
-                    trial, X_train, y_train, X_val, y_val, is_sweep=is_sweep
+                    trial, (X_train_l, y_train_l), (X_val, y_val), is_sweep=False
                 )
-            elif is_semisl_model:
+            elif isinstance(model, SemiSLModel):
                 run_metrics = model.train_ssl(
                     trial,
-                    X_train,
-                    y_train,
-                    X_train_ul,
-                    X_val,
-                    y_val,
-                    is_sweep=is_sweep,
-                    y_train_ul=y_train_ul,
+                    (X_train_l, y_train_l),
+                    (X_train_ul, y_train_ul),
+                    (X_val, y_val),
+                    is_sweep=False,
                 )
 
-            test_acc = model.top_1_acc(X_test, y_test)
+            val_acc = model.top_1_acc((X_val, y_val))
+            test_acc = model.top_1_acc((X_test, y_test))
             test_metrics = {"acc": test_acc}
 
             run_metricss[trial.number] = run_metrics
             test_metricss[trial.number] = test_metrics
 
             non_step_metric_dict, step_metric_dicts = convert_metrics(
-                flatten_metrics(
-                    {
-                        f"trial{trial.number}": {
-                            "run": run_metrics,
-                            "test": test_metrics,
-                            "params": trial.params,
-                        },
-                    }
-                )
+                {
+                    f"trial{trial.number}": {
+                        "run": run_metrics,
+                        "test": test_metrics,
+                        "params": trial.params,
+                    },
+                }
             )
             for metric_dict in [non_step_metric_dict] + step_metric_dicts:
                 wandb.log(metric_dict)
-            return test_acc
+            return val_acc
 
         study.optimize(
             objective_fn,
@@ -290,17 +167,15 @@ def main(args: argparse.Namespace) -> None:
         )
 
         non_step_metric_dict, step_metric_dicts = convert_metrics(
-            flatten_metrics(
-                {
-                    "best": {
-                        "trial": study.best_trial.number,
-                        "params": study.best_trial.params,
-                        "value": study.best_trial.value,
-                        "run": run_metricss[study.best_trial.number],
-                        "test": test_metricss[study.best_trial.number],
-                    },
-                }
-            )
+            {
+                "best": {
+                    "trial": study.best_trial.number,
+                    "params": study.best_trial.params,
+                    "value": study.best_trial.value,
+                    "run": run_metricss[study.best_trial.number],
+                    "test": test_metricss[study.best_trial.number],
+                },
+            }
         )
         for metric_dict in [non_step_metric_dict] + step_metric_dicts:
             wandb.log(metric_dict)
@@ -315,7 +190,7 @@ if __name__ == "__main__":
     parser_preload_data = subparsers.add_parser("preload_data")
     parser_preload_data.set_defaults(func=preload_data)
 
-    parser_run = subparsers.add_parser("run")
+    parser_run = subparsers.add_parser("run_eval")
     parser_run.add_argument("--entity", type=str, required=True)
     parser_run.add_argument(
         "--dataset", type=str, choices=DATASETS.keys(), required=True
@@ -324,10 +199,12 @@ if __name__ == "__main__":
     parser_run.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
     parser_run.add_argument("--seed", type=int, default=0)
     parser_run.add_argument("--n-trial", type=int, default=5)
-    parser_run.add_argument(
-        "--sweep", default=False, action=argparse.BooleanOptionalAction
-    )
-    parser_run.set_defaults(func=main)
+    parser_run.set_defaults(func=run_eval)
 
     args = parser.parse_args()
+
+    os.environ["WANDB_SILENT"] = "true"
+    warnings.filterwarnings("ignore", category=FutureWarning, module="openml.datasets")
+    warnings.filterwarnings("ignore", category=optuna.exceptions.ExperimentalWarning)
+
     args.func(args)

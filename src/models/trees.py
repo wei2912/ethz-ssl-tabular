@@ -5,21 +5,17 @@ from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassif
 from typing import Any, Dict
 
 from . import SLModel
+from utils.typing import Dataset
 
 
 class RandomForestModel(SLModel):
     def __init__(self):
         super().__init__()
 
-    def train(
-        self,
-        trial: Trial,
-        X_train: np.ndarray,
-        y_train: np.ndarray,
-        X_val: np.ndarray,
-        y_val: np.ndarray,
-        **_
-    ) -> Dict[str, Any]:
+    def train(self, trial: Trial, train: Dataset, val: Dataset, **_) -> Dict[str, Any]:
+        X_train, y_train = train
+        X_val, y_val = val
+
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         max_depth = trial.suggest_categorical("max_depth", [None])
         n_estimators = trial.suggest_categorical("n_estimators", [300])
@@ -29,8 +25,8 @@ class RandomForestModel(SLModel):
         )
         self._model = model.fit(X_train, y_train)
 
-        train_acc = self.top_1_acc(X_train, y_train)
-        val_acc = self.top_1_acc(X_val, y_val)
+        train_acc = self.top_1_acc((X_train, y_train))
+        val_acc = self.top_1_acc((X_val, y_val))
         return {"train": {"acc": train_acc}, "val": {"acc": val_acc}}
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
@@ -44,12 +40,13 @@ class HGBTModel(SLModel):
     def train(
         self,
         trial: Trial,
-        X_train: np.ndarray,
-        y_train: np.ndarray,
-        X_val: np.ndarray,
-        y_val: np.ndarray,
+        train: Dataset,
+        val: Dataset,
         is_sweep: bool = True,
     ) -> Dict[str, Any]:
+        X_train, y_train = train
+        X_val, y_val = val
+
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         if not is_sweep:
             learning_rate = trial.suggest_categorical("learning_rate", [0.03])
@@ -68,8 +65,8 @@ class HGBTModel(SLModel):
         )
         self._model = model.fit(X_train, y_train)
 
-        train_acc = self.top_1_acc(X_train, y_train)
-        val_acc = self.top_1_acc(X_val, y_val)
+        train_acc = self.top_1_acc((X_train, y_train))
+        val_acc = self.top_1_acc((X_val, y_val))
         return {"train": {"acc": train_acc}, "val": {"acc": val_acc}}
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:

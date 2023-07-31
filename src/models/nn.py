@@ -1,5 +1,4 @@
 import numpy as np
-import numpy.typing as npt
 import optuna
 import pandas as pd
 from sklearn.preprocessing import QuantileTransformer
@@ -7,10 +6,11 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 from . import SLModel
-from log_utils import Stepwise
+from utils.logging import Stepwise
+from utils.typing import Dataset
 
 
 class MLPBlock(nn.Module):
@@ -40,7 +40,7 @@ class MLP(nn.Module):
     def __init__(
         self,
         input_size: int,
-        n_classes: int,
+        n_class: int,
         n_blocks: int,
         layer_size: int,
         dropout_p: float,
@@ -55,7 +55,7 @@ class MLP(nn.Module):
                 for _ in range(n_blocks - 1)
             ]
         )
-        self.classifier = nn.Linear(layer_size, n_classes)
+        self.classifier = nn.Linear(layer_size, n_class)
 
     def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
         for block in self.blocks:
@@ -75,9 +75,7 @@ class MLPModel(SLModel):
         self._is_device_cuda = torch.cuda.is_available()
         self._device = torch.device("cuda" if self._is_device_cuda else "cpu")
 
-    def preprocess_data(
-        self, X: pd.DataFrame, y: pd.Series
-    ) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.int8]]:
+    def preprocess_data(self, X: pd.DataFrame, y: pd.Series) -> Dataset:
         # transformation adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 4
         qt = QuantileTransformer(output_distribution="normal", random_state=SEED)
         cols = X.select_dtypes("number").columns.tolist()
@@ -88,17 +86,13 @@ class MLPModel(SLModel):
         return (X.to_numpy(dtype=np.float32), y.cat.codes.to_numpy(dtype=np.int8))
 
     def train(
-        self,
-        trial: optuna.trial.Trial,
-        X_train: np.ndarray,
-        y_train: np.ndarray,
-        X_val: np.ndarray,
-        y_val: np.ndarray,
-        **_
+        self, trial: optuna.trial.Trial, train: Dataset, val: Dataset, **_
     ) -> Dict[str, Any]:
+        X_train, y_train = train
+        X_val, y_val = val
+
         input_size = X_train.shape[1]
-        # FIXME: should contain all classes with high prob.
-        n_classes = len(np.unique(y_val))
+        n_class = len(np.unique(y_val))  # FIXME: contains all classes with high prob.
         # to ensure drop_last does not discard the entire dataset
         batch_size = min(MAX_BATCH_SIZE, len(X_train))
 
@@ -108,7 +102,7 @@ class MLPModel(SLModel):
         layer_size = trial.suggest_categorical("layer_size", [256])
         lr = trial.suggest_categorical("lr", [0.1])
 
-        self._mlp = MLP(input_size, n_classes, n_blocks, layer_size, dropout_p).to(
+        self._mlp = MLP(input_size, n_class, n_blocks, layer_size, dropout_p).to(
             self._device
         )
 
@@ -169,7 +163,7 @@ class MLPModel(SLModel):
                 self._mlp.eval()
 
                 train_loss /= len(train_loader)
-                train_acc = self.top_1_acc(X_train, y_train)
+                train_acc = self.top_1_acc((X_train, y_train))
                 train_losses.append(train_loss)
                 train_accs.append(train_acc)
 
@@ -181,7 +175,7 @@ class MLPModel(SLModel):
                     z_val_b = self._mlp(X_val_b)
                     val_loss += criterion(z_val_b, y_val_b).item() / len(X_val_b)
                 val_loss /= len(val_loader)
-                val_acc = self.top_1_acc(X_val, y_val)
+                val_acc = self.top_1_acc((X_val, y_val))
 
                 scheduler.step(val_loss)
 
@@ -190,8 +184,8 @@ class MLPModel(SLModel):
                 val_accs.append(val_acc)
                 epoch += 1
 
-        train_acc = self.top_1_acc(X_train, y_train)
-        val_acc = self.top_1_acc(X_val, y_val)
+        train_acc = self.top_1_acc((X_train, y_train))
+        val_acc = self.top_1_acc((X_val, y_val))
         return {
             "train": {
                 "acc": train_acc,
@@ -210,7 +204,7 @@ class MLPModel(SLModel):
                 },
                 "size": len(X_train),
             },
-            "val": {"acc": val_acc, "size": len(X_val)},
+            "val": {"acc": val_acc},
         }
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
