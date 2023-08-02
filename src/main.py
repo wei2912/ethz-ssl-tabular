@@ -102,8 +102,10 @@ def run_eval(args: argparse.Namespace) -> None:
             config={
                 "args": vars(args),
                 "params": params,
-                "l_split": l_split,
-                "ul_split": ul_split,
+                "split": {
+                    "l_split": l_split,
+                    "ul_split": ul_split,
+                },
             },
             entity=entity,
             project=project_name,
@@ -202,10 +204,12 @@ def run_sweep(args: argparse.Namespace) -> None:
         "job_type": "sweep",
         "config": {
             "args": vars(args),
-            "l_split_0": l_split_0,
-            "ul_split_0": ul_split_0,
-            "l_split_1": l_split_1,
-            "ul_split_1": ul_split_1,
+            "split": {
+                "l_split_0": l_split_0,
+                "ul_split_0": ul_split_0,
+                "l_split_1": l_split_1,
+                "ul_split_1": ul_split_1,
+            },
         },
         "entity": entity,
         "project": project_name,
