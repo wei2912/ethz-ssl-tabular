@@ -208,13 +208,12 @@ def run_sweep(args: argparse.Namespace) -> None:
         as_multirun=True,
     )
 
-    (X_train_l_small, y_train_l_small), (
-        X_train_ul_small,
-        y_train_ul_small,
-    ) = prepare_l_ul((X_train, y_train), l_split_small, ul_split_small, seed)
-    (X_train_l_large, y_train_l_large), (
+    (X_train_l_small, _), (X_train_ul_small, _) = prepare_l_ul(
+        (X_train, y_train), l_split_small, ul_split_small, seed
+    )
+    (X_train_l_large, _), (
         X_train_ul_large,
-        y_train_ul_large,
+        _,
     ) = prepare_l_ul((X_train, y_train), l_split_large, ul_split_large, seed)
 
     print(
@@ -226,7 +225,7 @@ def run_sweep(args: argparse.Namespace) -> None:
         f"({l_split_large:.3}/{ul_split_large:.3})"
     )
 
-    study_name = f"{model_name}.{seed}.sweep_{random.randrange(0, 16**6):x}"
+    study_name = f"{model_name}.{seed}.sweep_{random.randrange(0, 16**6):06x}"
     storage = f"sqlite:///{project_name}.db"
     study = optuna.create_study(
         study_name=study_name,
@@ -248,6 +247,7 @@ def run_sweep(args: argparse.Namespace) -> None:
 
         test_acc_smalls = []
         test_acc_larges = []
+        metricss = {}
         for i, ((X_train, y_train), (X_test, y_test), (X_val, y_val)) in enumerate(
             splits
         ):
@@ -292,29 +292,32 @@ def run_sweep(args: argparse.Namespace) -> None:
                 )
                 test_acc_larges.append(model.top_1_acc((X_test, y_test)))
 
-            non_step_metric_dict, step_metric_dicts = convert_metrics(
-                {
-                    f"split{i}": {
-                        "run_small": run_metrics_small,
-                        "run_large": run_metrics_large,
-                        "test_small": {"acc": test_acc_smalls[i]},
-                        "test_large": {"acc": test_acc_larges[i]},
-                    }
-                }
-            )
-            for metric_dict in [non_step_metric_dict] + step_metric_dicts:
-                wandb.log(metric_dict)
+            metricss[f"split{i}"] = {
+                "run_small": run_metrics_small,
+                "run_large": run_metrics_large,
+                "test_small": {"acc": test_acc_smalls[i]},
+                "test_large": {"acc": test_acc_larges[i]},
+            }
 
         test_hmean_acc_small = hmean(test_acc_smalls)
         test_hmean_acc_large = hmean(test_acc_larges)
-        wandb.log(
+        non_step_metric_dict, step_metric_dicts = convert_metrics(
             {
+                **metricss,
                 "params": trial.params,
-                "test_small": {"hmean_acc": test_hmean_acc_small},
-                "test_large": {"hmean_acc": test_hmean_acc_large},
+                "test_small": {
+                    "hmean_acc": test_hmean_acc_small,
+                    "accs": test_acc_smalls,
+                },
+                "test_large": {
+                    "hmean_acc": test_hmean_acc_large,
+                    "accs": test_acc_larges,
+                },
                 "value": (test_hmean_acc_small, test_hmean_acc_large),
             }
         )
+        for metric_dict in [non_step_metric_dict] + step_metric_dicts:
+            wandb.log(metric_dict)
 
         return (test_hmean_acc_small, test_hmean_acc_large)
 
