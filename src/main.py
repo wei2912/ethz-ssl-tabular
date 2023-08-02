@@ -357,6 +357,7 @@ if __name__ == "__main__":
     hyperparams.add_argument("--prob-threshold", type=float)
     hyperparams.add_argument("--dropout-p", type=float)
     hyperparams.add_argument("--n-blocks", type=int)
+    hyperparams.add_argument("--n-estimators", type=int)
     hyperparams.add_argument("--layer-size", type=int)
     parser_eval.set_defaults(func=run_eval)
 

@@ -23,7 +23,7 @@ class RandomForestModel(SLModel):
         if not is_sweep:
             max_depth = wandb.config["max_depth"]
             n_estimators = wandb.config["n_estimators"]
-            min_samples_leaf = wandb.config["max_samples_leaf"]
+            min_samples_leaf = wandb.config["min_samples_leaf"]
         else:
             max_depth = trial.suggest_categorical("max_depth", [None, 3, 4, 5, 6])
             n_estimators = trial.suggest_int(
