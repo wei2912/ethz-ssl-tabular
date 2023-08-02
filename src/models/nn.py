@@ -119,7 +119,7 @@ class MLPModel(SLModel):
                 256,
                 step=32,
             )
-            lr = trial.suggest_float("lr", 0.01, 0.5, log=True)
+            lr = trial.suggest_float("lr", 0.01, 0.3, log=True)
 
         self._mlp = MLP(input_size, n_class, n_blocks, layer_size, dropout_p).to(
             self._device, non_blocking=True
