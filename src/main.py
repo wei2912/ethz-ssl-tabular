@@ -8,8 +8,8 @@ import wandb
 import argparse
 from pathlib import Path
 import json
+import logging
 import os
-import random
 from typing import Callable, Dict, Tuple, Union
 import warnings
 
@@ -234,13 +234,21 @@ def run_sweep(args: argparse.Namespace) -> None:
         f"({l_split_1:.3}/{ul_split_1:.3})"
     )
 
-    uid = f"{random.randrange(0, 16**6):06x}"
     study_name = f"{model_name}.{seed}.sweep"
-    storage_fp = Path(f"optuna/{project_name}_{uid}.db")
+    storage_fp = Path(f"optuna/{project_name}.db")
     storage_fp.parent.mkdir(exist_ok=True, parents=True)
+
+    storage_url = f"sqlite:///{storage_fp}"
+    if any(
+        study_name == summary.study_name
+        for summary in optuna.study.get_all_study_summaries(storage=storage_url)
+    ):
+        logging.info(f"Deleted {study_name} from database.")
+        optuna.delete_study(study_name=study_name, storage=storage_url)
+
     study = optuna.create_study(
         study_name=study_name,
-        storage=f"sqlite:///{storage_fp}",
+        storage=storage_url,
         directions=["maximize", "maximize"],
         sampler=optuna.samplers.TPESampler(),
     )
@@ -368,12 +376,12 @@ def run_sweep(args: argparse.Namespace) -> None:
         json.dump(config, f)
 
     sweep_config_art = wandb.Artifact(name=f"sweep-config-{model_name}", type="json")
-    sweep_config_art.add_file(config_fp)
+    sweep_config_art.add_file(config_fp, name=config_fp)
     run.log_artifact(sweep_config_art)
 
-    sweep_db_art = wandb.Artifact(name=f"sweep-db-{model_name}", type="database")
-    sweep_db_art.add_file(storage_fp)
-    run.log_artifact(sweep_db_art, aliases=[uid])
+    sweep_db_art = wandb.Artifact(name="sweep-db", type="database")
+    sweep_db_art.add_file(storage_fp, name=storage_fp)
+    run.log_artifact(sweep_db_art)
 
     run.finish()
 
@@ -390,7 +398,7 @@ if __name__ == "__main__":
     parser_eval.add_argument("dataset", type=str, choices=DATASETS.keys())
     parser_eval.add_argument("model", type=str, choices=MODELS.keys())
     parser_eval.add_argument("seed", type=int)
-    parser_eval.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
+    parser_eval.add_argument("--prefix", type=str, default="ethz-ssl-tabular_")
     parser_eval.set_defaults(func=run_eval)
 
     parser_sweep = subparsers.add_parser("sweep")
@@ -398,7 +406,7 @@ if __name__ == "__main__":
     parser_sweep.add_argument("dataset", type=str, choices=DATASETS.keys())
     parser_sweep.add_argument("model", type=str, choices=MODELS.keys())
     parser_sweep.add_argument("seed", type=int)
-    parser_sweep.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
+    parser_sweep.add_argument("--prefix", type=str, default="ethz-ssl-tabular_")
     parser_sweep.add_argument("--n-sweep", type=int, default=40)
     parser_sweep.add_argument("--n-split", type=int, default=5)
     parser_sweep.set_defaults(func=run_sweep)
