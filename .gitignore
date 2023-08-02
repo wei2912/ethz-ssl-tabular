@@ -160,6 +160,8 @@ cython_debug/
 #.idea/
 
 # Repository-specific stuff
+artifacts/
+config/
 optuna/
 wandb/
 *.db

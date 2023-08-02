@@ -2,7 +2,6 @@ import numpy as np
 import numpy.typing as npt
 from optuna.trial import Trial
 import pandas as pd
-import wandb
 
 import math
 from typing import Any, Callable, Dict, Optional, Union
@@ -36,13 +35,7 @@ class SelfTrainingModel_ThresholdSingleIterate(SemiSLModel):
         )
         X_val, y_val = val
 
-        prob_threshold: float
-        if trial is None:
-            params = wandb.config["params"]
-            prob_threshold = params["prob_threshold"]
-        else:
-            prob_threshold = trial.suggest_float("prob_threshold", 0.5, 0.99, step=0.01)
-
+        PROB_THRESHOLD: float = 0.9
         metrics: Dict[str, Any] = {}
 
         self._model = self.base_model_fn()
@@ -56,7 +49,7 @@ class SelfTrainingModel_ThresholdSingleIterate(SemiSLModel):
         y_pl = y_pl_probs.argmax(axis=1)
         y_pl_max_prob = y_pl_probs.max(axis=1)
 
-        is_selects = y_pl_max_prob >= prob_threshold
+        is_selects = y_pl_max_prob >= PROB_THRESHOLD
         X_train_pl, y_train_pl = X_train_ul[is_selects], y_pl[is_selects]
 
         pl_acc = (
@@ -73,7 +66,7 @@ class SelfTrainingModel_ThresholdSingleIterate(SemiSLModel):
             "size_ul": len(X_train_ul),
             "pl_acc": pl_acc,
             "n_pl": len(X_train_pl),
-            "prob_threshold": prob_threshold,
+            "prob_threshold": PROB_THRESHOLD,
             **new_metrics,
         }
 

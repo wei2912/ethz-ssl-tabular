@@ -10,7 +10,7 @@ from pathlib import Path
 import json
 import logging
 import os
-from typing import Callable, Dict, Tuple, Union
+from typing import Callable, Dict, Optional, Tuple, Union
 import warnings
 
 from utils.data import get_splits, prepare_train_test_val, prepare_l_ul
@@ -24,17 +24,14 @@ from models.self_training import (
 from models.trees import HGBTModel, RandomForestModel
 
 MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
-    "random-forest": lambda: RandomForestModel(),
-    "random-forest-st-th-si": lambda: SelfTrainingModel_ThresholdSingleIterate(
-        RandomForestModel
-    ),
-    "random-forest-st-curr": lambda: SelfTrainingModel_Curriculum(RandomForestModel),
-    "hgbt": lambda: HGBTModel(),
-    "hgbt-st-th-si": lambda: SelfTrainingModel_ThresholdSingleIterate(HGBTModel),
-    "hgbt-st-curr": lambda: SelfTrainingModel_Curriculum(HGBTModel),
-    "mlp": lambda: MLPModel(),
-    "mlp-st-th-si": lambda: SelfTrainingModel_ThresholdSingleIterate(MLPModel),
-    "mlp-st-curr": lambda: SelfTrainingModel_Curriculum(MLPModel),
+    "random-forest": RandomForestModel,
+    "hgbt": HGBTModel,
+    "mlp": MLPModel,
+}
+ST_TYPES: Dict[Optional[str], Callable[[Union[SLModel, SemiSLModel]], SemiSLModel]] = {
+    None: lambda model: model(),
+    "th-si": lambda model: SelfTrainingModel_ThresholdSingleIterate(model),
+    "curr": lambda model: SelfTrainingModel_Curriculum(model),
 }
 
 # datasets are taken from https://arxiv.org/pdf/2207.08815.pdf pg. 13
@@ -57,25 +54,32 @@ def preload_data(_) -> None:
 
 
 def run_eval(args: argparse.Namespace) -> None:
-    dataset_name: str
-    model_name: str
-    entity: str
-    prefix: str
-    seed: int
-    dataset_name, model_name, entity, prefix, seed = (
-        args.dataset,
-        args.model,
-        args.entity,
-        args.prefix,
-        args.seed,
-    )
+    dataset_name: str = args.dataset
+    model_name: str = args.model
+    st_type: str = args.st_type
+    entity: str = args.entity
+    prefix: str = args.prefix
+    seed: int = args.seed
 
     dataset_id = DATASETS[dataset_name]
     project_name = f"{prefix}{dataset_name}"
 
-    fp = Path(f"config/{project_name}_{model_name}.json")
-    with fp.open() as f:
+    run = wandb.init(
+        job_type="eval_load",
+        config={"args": vars(args)},
+        entity=entity,
+        project=project_name,
+    )
+
+    sweep_config_art_name = f"sweep-config-{model_name}:latest"
+    sweep_config_art_fp = f"{project_name}_{model_name}.json"
+    run.use_artifact(sweep_config_art_name).get_path(sweep_config_art_fp).download(
+        "config/"
+    )
+    with Path(f"config/{sweep_config_art_fp}").open() as f:
         params = json.load(f)["params"]
+
+    run.finish()
 
     print("===")
     print("*** eval ***")
@@ -83,21 +87,25 @@ def run_eval(args: argparse.Namespace) -> None:
     print(f"Dataset: {dataset_name}")
     print(f"Dataset ID: {dataset_id}")
     print(f"Model: {model_name}")
+    print(f"ST Type: {st_type}")
     print("---")
     print(f"Seed: {seed}")
     print(f"Params: {params}")
     print("===")
 
+    def model_fn() -> Union[SLModel, SemiSLModel]:
+        return ST_TYPES[st_type](MODELS[model_name])
+
     (X_train, y_train), (X_test, y_test), (X_val, y_val) = next(
         prepare_train_test_val(
-            dataset_id, 1, seed, preprocess_func=MODELS[model_name]().preprocess_data
+            dataset_id, 1, seed, preprocess_func=model_fn().preprocess_data
         )
     )
 
     print(f"> Train/Test/Val Split: {len(X_train)}/{len(X_test)}/{len(X_val)}")
 
-    for l_split, ul_split in tqdm(get_splits(MODELS[model_name]())):
-        wandb.init(
+    for l_split, ul_split in tqdm(get_splits(model_fn())):
+        run = wandb.init(
             job_type="eval",
             config={
                 "args": vars(args),
@@ -109,7 +117,7 @@ def run_eval(args: argparse.Namespace) -> None:
             },
             entity=entity,
             project=project_name,
-            group=f"{model_name}_{l_split:.3}_{ul_split:.3}",
+            group=f"{model_name}_{st_type}_{l_split:.3}_{ul_split:.3}",
         )
 
         (X_train_l, y_train_l), (X_train_ul, y_train_ul) = prepare_l_ul(
@@ -121,7 +129,7 @@ def run_eval(args: argparse.Namespace) -> None:
             f"({l_split:.3}/{ul_split:.3})"
         )
 
-        model = MODELS[model_name]()
+        model = model_fn()
         if isinstance(model, SLModel):
             run_metrics = model.train((X_train_l, y_train_l), (X_val, y_val))
         elif isinstance(model, SemiSLModel):
@@ -135,15 +143,12 @@ def run_eval(args: argparse.Namespace) -> None:
         test_metrics = {"acc": test_acc}
 
         non_step_metric_dict, step_metric_dicts = convert_metrics(
-            {
-                "run": run_metrics,
-                "test": test_metrics,
-            }
+            {"run": run_metrics, "test": test_metrics}
         )
         for metric_dict in [non_step_metric_dict] + step_metric_dicts:
-            wandb.log(metric_dict)
+            run.log(metric_dict)
 
-        wandb.finish()
+        run.finish()
 
 
 def run_sweep(args: argparse.Namespace) -> None:
@@ -182,7 +187,7 @@ def run_sweep(args: argparse.Namespace) -> None:
     print(f"No. of splits: {n_split}")
     print("===")
 
-    (X_train, y_train), (X_test, y_test), (X_val, y_val) = next(
+    (X_train, y_train), _, (X_val, _) = next(
         prepare_train_test_val(
             dataset_id, 1, seed, preprocess_func=MODELS[model_name]().preprocess_data
         )
@@ -220,10 +225,9 @@ def run_sweep(args: argparse.Namespace) -> None:
     (X_train_l_0, _), (X_train_ul_0, _) = prepare_l_ul(
         (X_train, y_train), l_split_0, ul_split_0, seed
     )
-    (X_train_l_1, _), (
-        X_train_ul_1,
-        _,
-    ) = prepare_l_ul((X_train, y_train), l_split_1, ul_split_1, seed)
+    (X_train_l_1, _), (X_train_ul_1, _) = prepare_l_ul(
+        (X_train, y_train), l_split_1, ul_split_1, seed
+    )
 
     print(
         f">> L/UL Split (Small): {len(X_train_l_0)}/{len(X_train_ul_0)} "
@@ -270,14 +274,12 @@ def run_sweep(args: argparse.Namespace) -> None:
         for i, ((X_train, y_train), (X_test, y_test), (X_val, y_val)) in enumerate(
             splits
         ):
-            (X_train_l_0, y_train_l_0), (
-                X_train_ul_0,
-                y_train_ul_0,
-            ) = prepare_l_ul((X_train, y_train), l_split_0, ul_split_0, seed)
-            (X_train_l_1, y_train_l_1), (
-                X_train_ul_1,
-                y_train_ul_1,
-            ) = prepare_l_ul((X_train, y_train), l_split_1, ul_split_1, seed)
+            (X_train_l_0, y_train_l_0), (X_train_ul_0, y_train_ul_0) = prepare_l_ul(
+                (X_train, y_train), l_split_0, ul_split_0, seed
+            )
+            (X_train_l_1, y_train_l_1), (X_train_ul_1, y_train_ul_1) = prepare_l_ul(
+                (X_train, y_train), l_split_1, ul_split_1, seed
+            )
 
             model = MODELS[model_name]()
             if isinstance(model, SLModel):
@@ -328,14 +330,8 @@ def run_sweep(args: argparse.Namespace) -> None:
         non_step_metric_dict, step_metric_dicts = convert_metrics(
             {
                 **metricss,
-                "test_0": {
-                    "hmean_acc": test_hmean_acc_0,
-                    "accs": test_acc_0s,
-                },
-                "test_1": {
-                    "hmean_acc": test_hmean_acc_1,
-                    "accs": test_acc_1s,
-                },
+                "test_0": {"hmean_acc": test_hmean_acc_0, "accs": test_acc_0s},
+                "test_1": {"hmean_acc": test_hmean_acc_1, "accs": test_acc_1s},
             }
         )
         for metric_dict in [non_step_metric_dict] + step_metric_dicts:
@@ -347,12 +343,7 @@ def run_sweep(args: argparse.Namespace) -> None:
         objective_fn, n_trials=n_sweep, callbacks=[wandbc], show_progress_bar=True
     )
 
-    run = wandb.init(
-        **{
-            **wandb_kwargs,
-            "job_type": "sweep_save",
-        }
-    )
+    run = wandb.init(**{**wandb_kwargs, "job_type": "sweep_save"})
 
     """
     Choose hyperparameters that perform best in the high data regime, while still
@@ -376,11 +367,11 @@ def run_sweep(args: argparse.Namespace) -> None:
         json.dump(config, f)
 
     sweep_config_art = wandb.Artifact(name=f"sweep-config-{model_name}", type="json")
-    sweep_config_art.add_file(config_fp, name=config_fp)
+    sweep_config_art.add_file(config_fp)
     run.log_artifact(sweep_config_art)
 
     sweep_db_art = wandb.Artifact(name="sweep-db", type="database")
-    sweep_db_art.add_file(storage_fp, name=storage_fp)
+    sweep_db_art.add_file(storage_fp)
     run.log_artifact(sweep_db_art)
 
     run.finish()
@@ -398,6 +389,9 @@ if __name__ == "__main__":
     parser_eval.add_argument("dataset", type=str, choices=DATASETS.keys())
     parser_eval.add_argument("model", type=str, choices=MODELS.keys())
     parser_eval.add_argument("seed", type=int)
+    parser_eval.add_argument(
+        "--st-type", type=str, choices=ST_TYPES.keys(), default=None
+    )
     parser_eval.add_argument("--prefix", type=str, default="ethz-ssl-tabular_")
     parser_eval.set_defaults(func=run_eval)
 
