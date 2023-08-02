@@ -190,24 +190,22 @@ def run_sweep(args: argparse.Namespace) -> None:
 
     model = MODELS[model_name]()
     if isinstance(model, SLModel):
-        l_split_small, ul_split_small = (0.025, 0.0)
-        l_split_large, ul_split_large = (0.25, 0.0)
+        l_split_0, ul_split_0 = (0.025, 0.0)
+        l_split_1, ul_split_1 = (0.25, 0.0)
     elif isinstance(model, SemiSLModel):
-        l_split_small, ul_split_small = (0.025, 0.05)
-        l_split_large, ul_split_large = (0.25, 0.5)
+        l_split_0, ul_split_0 = (0.025, 0.05)
+        l_split_1, ul_split_1 = (0.25, 0.5)
     else:
         raise NotImplementedError("model type not supported")
 
     wandb_kwargs = {
         "job_type": "sweep",
         "config": {
-            "model": model_name,
-            "l_split_small": l_split_small,
-            "ul_split_small": ul_split_small,
-            "l_split_large": l_split_large,
-            "ul_split_large": ul_split_large,
-            "seed": seed,
-            "n_sweep": n_sweep,
+            "args": vars(args),
+            "l_split_0": l_split_0,
+            "ul_split_0": ul_split_0,
+            "l_split_1": l_split_1,
+            "ul_split_1": ul_split_1,
         },
         "entity": entity,
         "project": project_name,
@@ -215,21 +213,21 @@ def run_sweep(args: argparse.Namespace) -> None:
     }
     wandbc = WeightsAndBiasesCallback(wandb_kwargs=wandb_kwargs, as_multirun=True)
 
-    (X_train_l_small, _), (X_train_ul_small, _) = prepare_l_ul(
-        (X_train, y_train), l_split_small, ul_split_small, seed
+    (X_train_l_0, _), (X_train_ul_0, _) = prepare_l_ul(
+        (X_train, y_train), l_split_0, ul_split_0, seed
     )
-    (X_train_l_large, _), (
-        X_train_ul_large,
+    (X_train_l_1, _), (
+        X_train_ul_1,
         _,
-    ) = prepare_l_ul((X_train, y_train), l_split_large, ul_split_large, seed)
+    ) = prepare_l_ul((X_train, y_train), l_split_1, ul_split_1, seed)
 
     print(
-        f">> L/UL Split (Small): {len(X_train_l_small)}/{len(X_train_ul_small)} "
-        f"({l_split_small:.3}/{ul_split_small:.3})"
+        f">> L/UL Split (Small): {len(X_train_l_0)}/{len(X_train_ul_0)} "
+        f"({l_split_0:.3}/{ul_split_0:.3})"
     )
     print(
-        f">> L/UL Split (Large): {len(X_train_l_large)}/{len(X_train_ul_large)} "
-        f"({l_split_large:.3}/{ul_split_large:.3})"
+        f">> L/UL Split (Large): {len(X_train_l_1)}/{len(X_train_ul_1)} "
+        f"({l_split_1:.3}/{ul_split_1:.3})"
     )
 
     uid = f"{random.randrange(0, 16**6):06x}"
@@ -254,80 +252,78 @@ def run_sweep(args: argparse.Namespace) -> None:
             preprocess_func=MODELS[model_name]().preprocess_data,
         )
 
-        test_acc_smalls = []
-        test_acc_larges = []
+        test_acc_0s = []
+        test_acc_1s = []
         metricss = {}
         for i, ((X_train, y_train), (X_test, y_test), (X_val, y_val)) in enumerate(
             splits
         ):
-            (X_train_l_small, y_train_l_small), (
-                X_train_ul_small,
-                y_train_ul_small,
-            ) = prepare_l_ul((X_train, y_train), l_split_small, ul_split_small, seed)
-            (X_train_l_large, y_train_l_large), (
-                X_train_ul_large,
-                y_train_ul_large,
-            ) = prepare_l_ul((X_train, y_train), l_split_large, ul_split_large, seed)
+            (X_train_l_0, y_train_l_0), (
+                X_train_ul_0,
+                y_train_ul_0,
+            ) = prepare_l_ul((X_train, y_train), l_split_0, ul_split_0, seed)
+            (X_train_l_1, y_train_l_1), (
+                X_train_ul_1,
+                y_train_ul_1,
+            ) = prepare_l_ul((X_train, y_train), l_split_1, ul_split_1, seed)
 
             model = MODELS[model_name]()
             if isinstance(model, SLModel):
                 model = MODELS[model_name]()
-                run_metrics_small = model.train(
-                    (X_train_l_small, y_train_l_small), (X_val, y_val), trial=trial
+                run_metrics_0 = model.train(
+                    (X_train_l_0, y_train_l_0), (X_val, y_val), trial=trial
                 )
-                test_acc_smalls.append(model.top_1_acc((X_test, y_test)))
+                test_acc_0s.append(model.top_1_acc((X_test, y_test)))
 
                 model = MODELS[model_name]()
-                run_metrics_large = model.train(
-                    (X_train_l_large, y_train_l_large), (X_val, y_val), trial=trial
+                run_metrics_1 = model.train(
+                    (X_train_l_1, y_train_l_1), (X_val, y_val), trial=trial
                 )
-                test_acc_larges.append(model.top_1_acc((X_test, y_test)))
+                test_acc_1s.append(model.top_1_acc((X_test, y_test)))
             elif isinstance(model, SemiSLModel):
                 model = MODELS[model_name]()
-                run_metrics_small = model.train_ssl(
-                    (X_train_l_small, y_train_l_small),
-                    (X_train_ul_small, y_train_ul_small),
+                run_metrics_0 = model.train_ssl(
+                    (X_train_l_0, y_train_l_0),
+                    (X_train_ul_0, y_train_ul_0),
                     (X_val, y_val),
                     trial=trial,
                 )
-                test_acc_smalls.append(model.top_1_acc((X_test, y_test)))
+                test_acc_0s.append(model.top_1_acc((X_test, y_test)))
 
                 model = MODELS[model_name]()
-                run_metrics_large = model.train_ssl(
-                    (X_train_l_large, y_train_l_large),
-                    (X_train_ul_large, y_train_ul_large),
+                run_metrics_1 = model.train_ssl(
+                    (X_train_l_1, y_train_l_1),
+                    (X_train_ul_1, y_train_ul_1),
                     (X_val, y_val),
                     trial=trial,
                 )
-                test_acc_larges.append(model.top_1_acc((X_test, y_test)))
+                test_acc_1s.append(model.top_1_acc((X_test, y_test)))
 
             metricss[f"split{i}"] = {
-                "run_small": run_metrics_small,
-                "run_large": run_metrics_large,
-                "test_small": {"acc": test_acc_smalls[i]},
-                "test_large": {"acc": test_acc_larges[i]},
+                "run_0": run_metrics_0,
+                "run_1": run_metrics_1,
+                "test_0": {"acc": test_acc_0s[i]},
+                "test_1": {"acc": test_acc_1s[i]},
             }
 
-        test_hmean_acc_small = hmean(test_acc_smalls)
-        test_hmean_acc_large = hmean(test_acc_larges)
+        test_hmean_acc_0 = hmean(test_acc_0s)
+        test_hmean_acc_1 = hmean(test_acc_1s)
         # round to closest multiple of PARETO_TOLERANCE (inexact)
         values = (
-            round(test_hmean_acc_small / PARETO_TOLERANCE) * PARETO_TOLERANCE,
-            round(test_hmean_acc_large / PARETO_TOLERANCE) * PARETO_TOLERANCE,
+            round(test_hmean_acc_0 / PARETO_TOLERANCE) * PARETO_TOLERANCE,
+            round(test_hmean_acc_1 / PARETO_TOLERANCE) * PARETO_TOLERANCE,
         )
         non_step_metric_dict, step_metric_dicts = convert_metrics(
             {
                 **metricss,
-                "params": trial.params,
-                "test_small": {
-                    "hmean_acc": test_hmean_acc_small,
-                    "accs": test_acc_smalls,
+                "test_0": {
+                    "hmean_acc": test_hmean_acc_0,
+                    "accs": test_acc_0s,
                 },
-                "test_large": {
-                    "hmean_acc": test_hmean_acc_large,
-                    "accs": test_acc_larges,
+                "test_1": {
+                    "hmean_acc": test_hmean_acc_1,
+                    "accs": test_acc_1s,
                 },
-                "values": values,
             }
         )
         for metric_dict in [non_step_metric_dict] + step_metric_dicts:
