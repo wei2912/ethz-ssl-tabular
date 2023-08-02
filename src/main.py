@@ -235,6 +235,7 @@ def run_sweep(args: argparse.Namespace) -> None:
     uid = f"{random.randrange(0, 16**6):06x}"
     study_name = f"{model_name}.{seed}.sweep_{uid}"
     storage_fp = Path(f"optuna/{project_name}_{uid}.db")
+    storage_fp.parent.mkdir(exist_ok=True, parents=True)
     study = optuna.create_study(
         study_name=study_name,
         storage=f"sqlite:///{storage_fp}",
