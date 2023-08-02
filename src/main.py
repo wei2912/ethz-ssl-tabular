@@ -69,6 +69,7 @@ def run_eval(args: argparse.Namespace) -> None:
         config={"args": vars(args)},
         entity=entity,
         project=project_name,
+        group=f"{model_name}_{st_type}",
     )
 
     sweep_config_art_name = f"sweep-config-{model_name}:latest"
