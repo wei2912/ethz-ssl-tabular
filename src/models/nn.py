@@ -59,7 +59,7 @@ class MLP(nn.Module):
         return self.classifier(x)
 
 
-MAX_BATCH_SIZE = 128
+BATCH_SIZE = 128
 N_ITER = 1000
 SEED = 123456
 
@@ -82,7 +82,7 @@ class MLPModel(SLModel):
         return (X.to_numpy(dtype=np.float32), y.cat.codes.to_numpy(dtype=np.int8))
 
     def train(
-        self, train: Dataset, val: Dataset, trial: Optional[Trial], **_
+        self, train: Dataset, val: Dataset, trial: Optional[Trial] = None
     ) -> Dict[str, Any]:
         X_train, y_train = train
         X_val, y_val = val
@@ -94,15 +94,10 @@ class MLPModel(SLModel):
         if trial is None:
             layer_size = wandb.config["layer_size"]
             lr = wandb.config["lr"]
-            batch_size = wandb.config["batch_size"]
         else:
             layer_size = trial.suggest_int("layer_size", 64, 256, step=64)
-            lr = trial.suggest_float("lr", 0.001, 0.01, step=0.001)
-            batch_size = trial.suggest_int("batch_size", 64, 128, step=32)
+            lr = trial.suggest_float("lr", 0.004, 0.04, step=0.004)
         n_blocks = 4
-
-        # to ensure drop_last does not discard the entire dataset
-        batch_size = min(batch_size, len(X_train))
 
         self._mlp = MLP(input_size, n_class, n_blocks, layer_size).to(
             self._device, non_blocking=True
@@ -112,7 +107,8 @@ class MLPModel(SLModel):
             TensorDataset(
                 torch.from_numpy(X_train).float(), torch.from_numpy(y_train).long()
             ),
-            batch_size=batch_size,
+            # to ensure drop_last does not discard the entire dataset
+            batch_size=min(BATCH_SIZE, len(X_train)),
             shuffle=True,
             drop_last=True,
             pin_memory=self._is_device_cuda,
@@ -121,7 +117,7 @@ class MLPModel(SLModel):
             TensorDataset(
                 torch.from_numpy(X_val).float(), torch.from_numpy(y_val).long()
             ),
-            batch_size=MAX_BATCH_SIZE,
+            batch_size=BATCH_SIZE,
             shuffle=False,
             pin_memory=self._is_device_cuda,
         )
@@ -191,7 +187,7 @@ class MLPModel(SLModel):
         return {
             "train": {
                 "acc": train_acc,
-                "batch_size": batch_size,
+                "batch_size": BATCH_SIZE,
                 "max_epochs": N_ITER // n_iter_per_epoch,
                 "policy": {
                     "patience": patience,
@@ -214,7 +210,7 @@ class MLPModel(SLModel):
 
         loader = DataLoader(
             TensorDataset(torch.from_numpy(X).float()),
-            batch_size=MAX_BATCH_SIZE,
+            batch_size=BATCH_SIZE,
             shuffle=False,
             pin_memory=self._is_device_cuda,
         )

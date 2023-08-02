@@ -28,7 +28,7 @@ class SelfTrainingModel_ThresholdSingleIterate(SemiSLModel):
         train_l: Dataset,
         train_ul: Union[Dataset, npt.NDArray[np.float32]],
         val: Dataset,
-        trial: Optional[Trial],
+        trial: Optional[Trial] = None,
     ) -> Dict[str, Any]:
         X_train_l, y_train_l = train_l
         X_train_ul, y_train_ul = (
@@ -103,7 +103,7 @@ class SelfTrainingModel_Curriculum(SemiSLModel):
         train_l: Dataset,
         train_ul: Union[Dataset, npt.NDArray[np.float32]],
         val: Dataset,
-        trial: Optional[Trial],
+        trial: Optional[Trial] = None,
     ) -> Dict[str, Any]:
         X_train_l, y_train_l = train_l
         X_train_ul, y_train_ul = (

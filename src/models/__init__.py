@@ -45,7 +45,6 @@ class SLModel(Model):
         train: Dataset,
         val: Dataset,
         trial: Optional[Trial] = None,
-        **kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         :param run: WandB run object
@@ -68,7 +67,6 @@ class SemiSLModel(Model):
         train_ul: Union[Dataset, npt.NDArray[np.float32]],
         val: Dataset,
         trial: Optional[Trial] = None,
-        **kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         :param run: WandB run object

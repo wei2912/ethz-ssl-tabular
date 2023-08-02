@@ -14,7 +14,10 @@ class RandomForestModel(SLModel):
         super().__init__()
 
     def train(
-        self, train: Dataset, val: Dataset, trial: Optional[Trial], **_
+        self,
+        train: Dataset,
+        val: Dataset,
+        trial: Optional[Trial] = None,
     ) -> Dict[str, Any]:
         X_train, y_train = train
         X_val, y_val = val
@@ -52,7 +55,7 @@ class HGBTModel(SLModel):
         self,
         train: Dataset,
         val: Dataset,
-        trial: Optional[Trial],
+        trial: Optional[Trial] = None,
     ) -> Dict[str, Any]:
         X_train, y_train = train
         X_val, y_val = val
