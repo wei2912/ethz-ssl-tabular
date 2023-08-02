@@ -2,7 +2,7 @@ from imblearn.datasets import make_imbalance
 import numpy as np
 import openml
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import StratifiedShuffleSplit, train_test_split
 
 from collections.abc import Iterator
 import itertools
@@ -46,9 +46,10 @@ def __balance_data(
 
 def prepare_train_test_val(
     dataset_id: int,
+    n_split: int,
     seed: int,
     preprocess_func: Optional[Callable[[pd.DataFrame, pd.Series], Dataset]] = None,
-) -> Tuple[Dataset, Dataset, Dataset]:
+) -> Iterator[Tuple[Dataset, Dataset, Dataset]]:
     dataset = openml.datasets.get_dataset(dataset_id)
     X, y, _, _ = dataset.get_data(
         target=dataset.default_target_attribute, dataset_format="dataframe"
@@ -68,24 +69,25 @@ def prepare_train_test_val(
     logging.info(f"No. of classes: {n_class}")
     logging.info(f"No. of samples per class: {len(X_pp) // n_class}")
 
-    X_train_val, X_test, y_train_val, y_test = train_test_split(
-        X_pp,
-        y_pp,
+    sss = StratifiedShuffleSplit(
+        n_splits=n_split,
         train_size=N_TRAIN + N_VAL,
         test_size=N_TEST,
-        stratify=y_pp,
         random_state=seed,
     )
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_train_val,
-        y_train_val,
-        train_size=N_TRAIN,
-        test_size=N_VAL,
-        stratify=y_train_val,
-        random_state=seed,
-    )
+    for (train_val_ids, test_ids) in sss.split(X_pp, y_pp):
+        X_train_val, y_train_val = X_pp[train_val_ids], y_pp[train_val_ids]
+        X_test, y_test = X_pp[test_ids], y_pp[test_ids]
 
-    return ((X_train, y_train), (X_test, y_test), (X_val, y_val))
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_train_val,
+            y_train_val,
+            train_size=N_TRAIN,
+            test_size=N_VAL,
+            stratify=y_train_val,
+            random_state=seed,
+        )
+        yield (X_train, y_train), (X_test, y_test), (X_val, y_val)
 
 
 def get_splits(model: Union[SLModel, SemiSLModel]) -> Iterator[Tuple[float, float]]:

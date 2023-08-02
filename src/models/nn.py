@@ -1,12 +1,13 @@
 import numpy as np
-import optuna
+from optuna.trial import Trial
 import pandas as pd
 from sklearn.preprocessing import QuantileTransformer
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
+import wandb
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from . import SLModel
 from utils.logging import Stepwise
@@ -19,14 +20,13 @@ class MLPBlock(nn.Module):
     https://arxiv.org/pdf/2106.11959.pdf.
     """
 
-    def __init__(self, input_size: int, output_size: int, dropout_p: float = 0.5):
+    def __init__(self, input_size: int, output_size: int):
         super().__init__()
 
         self.block = nn.ModuleList(
             [
                 nn.Linear(input_size, output_size),
                 nn.ReLU(),
-                nn.Dropout(p=dropout_p),
             ]
         )
 
@@ -43,17 +43,13 @@ class MLP(nn.Module):
         n_class: int,
         n_blocks: int,
         layer_size: int,
-        dropout_p: float,
     ):
         super().__init__()
 
         assert n_blocks > 0
         self.blocks = nn.ModuleList(
-            [MLPBlock(input_size, layer_size, dropout_p=dropout_p)]
-            + [
-                MLPBlock(layer_size, layer_size, dropout_p=dropout_p)
-                for _ in range(n_blocks - 1)
-            ]
+            [MLPBlock(input_size, layer_size)]
+            + [MLPBlock(layer_size, layer_size) for _ in range(n_blocks - 1)]
         )
         self.classifier = nn.Linear(layer_size, n_class)
 
@@ -86,12 +82,7 @@ class MLPModel(SLModel):
         return (X.to_numpy(dtype=np.float32), y.cat.codes.to_numpy(dtype=np.int8))
 
     def train(
-        self,
-        trial: optuna.trial.Trial,
-        train: Dataset,
-        val: Dataset,
-        is_sweep: bool,
-        **_
+        self, train: Dataset, val: Dataset, trial: Optional[Trial], **_
     ) -> Dict[str, Any]:
         X_train, y_train = train
         X_val, y_val = val
@@ -102,26 +93,20 @@ class MLPModel(SLModel):
         batch_size = min(MAX_BATCH_SIZE, len(X_train))
 
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
-        if not is_sweep:
-            dropout_p = trial.suggest_categorical("dropout_p", [0])
-            n_blocks = trial.suggest_categorical("n_blocks", [4])
-            layer_size = trial.suggest_categorical("layer_size", [256])
-            lr = trial.suggest_categorical("lr", [0.1])
+        if trial is None:
+            layer_size = wandb.config["layer_size"]
+            lr = wandb.config["lr"]
         else:
-            dropout_p = trial.suggest_categorical(
-                "dropout_p",
-                [0, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3],
-            )
-            n_blocks = trial.suggest_int("n_blocks", 3, 6, log=True)
             layer_size = trial.suggest_int(
                 "layer_size",
                 64,
-                256,
-                step=32,
+                512,
+                step=64,
             )
-            lr = trial.suggest_float("lr", 0.01, 0.3, log=True)
+            lr = trial.suggest_float("lr", 0.01, 0.1, step=0.01)
+        n_blocks = 4
 
-        self._mlp = MLP(input_size, n_class, n_blocks, layer_size, dropout_p).to(
+        self._mlp = MLP(input_size, n_class, n_blocks, layer_size).to(
             self._device, non_blocking=True
         )
 

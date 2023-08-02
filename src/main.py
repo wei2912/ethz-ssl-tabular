@@ -1,6 +1,7 @@
 import openml
 import optuna
 from optuna.integration import WeightsAndBiasesCallback
+from scipy.stats import hmean
 from tqdm.auto import tqdm
 import wandb
 
@@ -16,7 +17,6 @@ from models import SemiSLModel, SLModel
 from models.nn import MLPModel
 from models.self_training import (
     SelfTrainingModel_Curriculum,
-    SelfTrainingModel_CurriculumSingleIterate,
     SelfTrainingModel_ThresholdSingleIterate,
 )
 from models.trees import HGBTModel, RandomForestModel
@@ -33,7 +33,6 @@ MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
     "mlp": lambda: MLPModel(),
     "mlp-st-th-si": lambda: SelfTrainingModel_ThresholdSingleIterate(MLPModel),
     "mlp-st-curr": lambda: SelfTrainingModel_Curriculum(MLPModel),
-    "mlp-st-curr-si": lambda: SelfTrainingModel_CurriculumSingleIterate(MLPModel),
 }
 
 # datasets are taken from https://arxiv.org/pdf/2207.08815.pdf pg. 13
@@ -61,16 +60,13 @@ def run_eval(args: argparse.Namespace) -> None:
     entity: str
     prefix: str
     seed: int
-    n_trial: int
-    dataset_name, model_name, entity, prefix, seed, n_trial = (
+    dataset_name, model_name, entity, prefix, seed = (
         args.dataset,
         args.model,
         args.entity,
         args.prefix,
         args.seed,
-        args.n_trial,
     )
-    assert n_trial > 0
 
     dataset_id = DATASETS[dataset_name]
     project_name = f"{prefix}{dataset_name}"
@@ -83,32 +79,28 @@ def run_eval(args: argparse.Namespace) -> None:
     print(f"Model: {model_name}")
     print("---")
     print(f"Seed: {seed}")
-    print(f"No. of trials: {n_trial}")
     print("---")
 
-    (X_train, y_train), (X_test, y_test), (X_val, y_val) = prepare_train_test_val(
-        dataset_id, seed, preprocess_func=MODELS[model_name]().preprocess_data
+    (X_train, y_train), (X_test, y_test), (X_val, y_val) = next(
+        prepare_train_test_val(
+            dataset_id, 1, seed, preprocess_func=MODELS[model_name]().preprocess_data
+        )
     )
 
     print(f"> Train/Test/Val Split: {len(X_train)}/{len(X_test)}/{len(X_val)}")
 
     for l_split, ul_split in tqdm(get_splits(MODELS[model_name]())):
-        wandbc = WeightsAndBiasesCallback(
-            wandb_kwargs={
-                "job_type": "eval",
-                "config": {
-                    **vars(args),
-                    "l_split": l_split,
-                    "ul_split": ul_split,
-                },
-                "entity": entity,
-                "project": project_name,
-                "group": f"{model_name}_{l_split:.3}_{ul_split:.3}",
+        wandb.init(
+            job_type="eval",
+            config={
+                **vars(args),
+                "l_split": l_split,
+                "ul_split": ul_split,
             },
+            entity=entity,
+            project=project_name,
+            group=f"{model_name}_{l_split:.3}_{ul_split:.3}",
         )
-
-        run_metricss = {}
-        test_metricss = {}
 
         (X_train_l, y_train_l), (X_train_ul, y_train_ul) = prepare_l_ul(
             (X_train, y_train), l_split, ul_split, seed
@@ -119,61 +111,23 @@ def run_eval(args: argparse.Namespace) -> None:
             f"({l_split:.3}/{ul_split:.3})"
         )
 
-        study_name = f"{model_name}.{seed}.eval_{random.randrange(0, 16**6):x}"
-        storage = f"sqlite:///{project_name}.db"
-        study = optuna.create_study(
-            study_name=study_name, storage=storage, direction="maximize"
-        )
-        print(f">>> Study Name: {study_name}")
-        print(f">>> Storage: {storage}")
-
-        @wandbc.track_in_wandb()
-        def objective_fn(trial: optuna.trial.Trial) -> float:
-            model = MODELS[model_name]()
-            if isinstance(model, SLModel):
-                run_metrics = model.train(
-                    trial, (X_train_l, y_train_l), (X_val, y_val), False
-                )
-            elif isinstance(model, SemiSLModel):
-                run_metrics = model.train_ssl(
-                    trial,
-                    (X_train_l, y_train_l),
-                    (X_train_ul, y_train_ul),
-                    (X_val, y_val),
-                    False,
-                )
-
-            val_acc = model.top_1_acc((X_val, y_val))
-            test_acc = model.top_1_acc((X_test, y_test))
-            test_metrics = {"acc": test_acc}
-
-            run_metricss[trial.number] = run_metrics
-            test_metricss[trial.number] = test_metrics
-
-            non_step_metric_dict, step_metric_dicts = convert_metrics(
-                {
-                    f"trial{trial.number}": {
-                        "run": run_metrics,
-                        "test": test_metrics,
-                        "params": trial.params,
-                    },
-                }
+        model = MODELS[model_name]()
+        if isinstance(model, SLModel):
+            run_metrics = model.train((X_train_l, y_train_l), (X_val, y_val))
+        elif isinstance(model, SemiSLModel):
+            run_metrics = model.train_ssl(
+                (X_train_l, y_train_l),
+                (X_train_ul, y_train_ul),
+                (X_val, y_val),
             )
-            for metric_dict in [non_step_metric_dict] + step_metric_dicts:
-                wandb.log(metric_dict)
-            return val_acc
 
-        study.optimize(objective_fn, n_trials=n_trial, callbacks=[wandbc])
+        test_acc = model.top_1_acc((X_test, y_test))
+        test_metrics = {"acc": test_acc}
 
         non_step_metric_dict, step_metric_dicts = convert_metrics(
             {
-                "best": {
-                    "trial": study.best_trial.number,
-                    "params": study.best_trial.params,
-                    "value": study.best_trial.value,
-                    "run": run_metricss[study.best_trial.number],
-                    "test": test_metricss[study.best_trial.number],
-                },
+                "run": run_metrics,
+                "test": test_metrics,
             }
         )
         for metric_dict in [non_step_metric_dict] + step_metric_dicts:
@@ -189,15 +143,18 @@ def run_sweep(args: argparse.Namespace) -> None:
     prefix: str
     seed: int
     n_sweep: int
-    dataset_name, model_name, entity, prefix, seed, n_sweep = (
+    n_split: int
+    dataset_name, model_name, entity, prefix, seed, n_sweep, n_split = (
         args.dataset,
         args.model,
         args.entity,
         args.prefix,
         args.seed,
         args.n_sweep,
+        args.n_split,
     )
     assert n_sweep > 0
+    assert n_split > 0
 
     dataset_id = DATASETS[dataset_name]
     project_name = f"{prefix}{dataset_name}"
@@ -211,21 +168,24 @@ def run_sweep(args: argparse.Namespace) -> None:
     print("---")
     print(f"Seed: {seed}")
     print(f"No. of hyperparameter sweeps: {n_sweep}")
+    print(f"No. of splits: {n_split}")
     print("---")
 
-    (X_train, y_train), (X_test, y_test), (X_val, y_val) = prepare_train_test_val(
-        dataset_id, seed, preprocess_func=MODELS[model_name]().preprocess_data
+    (X_train, y_train), (X_test, y_test), (X_val, y_val) = next(
+        prepare_train_test_val(
+            dataset_id, 1, seed, preprocess_func=MODELS[model_name]().preprocess_data
+        )
     )
 
     print(f"> Train/Val Split: {len(X_train)}/{len(X_val)}")
 
     model = MODELS[model_name]()
     if isinstance(model, SLModel):
-        l_split_0, ul_split_0 = (0.025, 0.0)
-        l_split_1, ul_split_1 = (0.25, 0.0)
+        l_split_small, ul_split_small = (0.025, 0.0)
+        l_split_large, ul_split_large = (0.25, 0.0)
     elif isinstance(model, SemiSLModel):
-        l_split_0, ul_split_0 = (0.025, 0.05)
-        l_split_1, ul_split_1 = (0.25, 0.5)
+        l_split_small, ul_split_small = (0.025, 0.05)
+        l_split_large, ul_split_large = (0.25, 0.5)
     else:
         raise NotImplementedError("model type not supported")
 
@@ -234,10 +194,10 @@ def run_sweep(args: argparse.Namespace) -> None:
             "job_type": "sweep",
             "config": {
                 "model": model_name,
-                "l_split_0": l_split_0,
-                "ul_split_0": ul_split_0,
-                "l_split_1": l_split_1,
-                "ul_split_1": ul_split_1,
+                "l_split_small": l_split_small,
+                "ul_split_small": ul_split_small,
+                "l_split_large": l_split_large,
+                "ul_split_large": ul_split_large,
                 "seed": seed,
                 "n_sweep": n_sweep,
             },
@@ -248,23 +208,22 @@ def run_sweep(args: argparse.Namespace) -> None:
         as_multirun=True,
     )
 
-    run_metricss_0 = {}
-    run_metricss_1 = {}
-
-    (X_train_l_0, y_train_l_0), (X_train_ul_0, y_train_ul_0) = prepare_l_ul(
-        (X_train, y_train), l_split_0, ul_split_0, seed
-    )
-    (X_train_l_1, y_train_l_1), (X_train_ul_1, y_train_ul_1) = prepare_l_ul(
-        (X_train, y_train), l_split_1, ul_split_1, seed
-    )
+    (X_train_l_small, y_train_l_small), (
+        X_train_ul_small,
+        y_train_ul_small,
+    ) = prepare_l_ul((X_train, y_train), l_split_small, ul_split_small, seed)
+    (X_train_l_large, y_train_l_large), (
+        X_train_ul_large,
+        y_train_ul_large,
+    ) = prepare_l_ul((X_train, y_train), l_split_large, ul_split_large, seed)
 
     print(
-        f">> L/UL Split 0: {len(X_train_l_0)}/{len(X_train_ul_0)} "
-        f"({l_split_0:.3}/{ul_split_0:.3})"
+        f">> L/UL Split (Small): {len(X_train_l_small)}/{len(X_train_ul_small)} "
+        f"({l_split_small:.3}/{ul_split_small:.3})"
     )
     print(
-        f">> L/UL Split 1: {len(X_train_l_1)}/{len(X_train_ul_1)} "
-        f"({l_split_1:.3}/{ul_split_1:.3})"
+        f">> L/UL Split (Large): {len(X_train_l_large)}/{len(X_train_ul_large)} "
+        f"({l_split_large:.3}/{ul_split_large:.3})"
     )
 
     study_name = f"{model_name}.{seed}.sweep_{random.randrange(0, 16**6):x}"
@@ -280,55 +239,84 @@ def run_sweep(args: argparse.Namespace) -> None:
 
     @wandbc.track_in_wandb()
     def objective_fn(trial: optuna.trial.Trial) -> Tuple[float, float]:
-        model = MODELS[model_name]()
-        if isinstance(model, SLModel):
-            model = MODELS[model_name]()
-            run_metrics_0 = model.train(
-                trial, (X_train_l_0, y_train_l_0), (X_val, y_val), True
-            )
-            test_acc_0 = model.top_1_acc((X_test, y_test))
+        splits = prepare_train_test_val(
+            dataset_id,
+            n_split,
+            seed,
+            preprocess_func=MODELS[model_name]().preprocess_data,
+        )
+
+        test_acc_smalls = []
+        test_acc_larges = []
+        for i, ((X_train, y_train), (X_test, y_test), (X_val, y_val)) in enumerate(
+            splits
+        ):
+            (X_train_l_small, y_train_l_small), (
+                X_train_ul_small,
+                y_train_ul_small,
+            ) = prepare_l_ul((X_train, y_train), l_split_small, ul_split_small, seed)
+            (X_train_l_large, y_train_l_large), (
+                X_train_ul_large,
+                y_train_ul_large,
+            ) = prepare_l_ul((X_train, y_train), l_split_large, ul_split_large, seed)
 
             model = MODELS[model_name]()
-            run_metrics_1 = model.train(
-                trial, (X_train_l_1, y_train_l_1), (X_val, y_val), True
-            )
-            test_acc_1 = model.top_1_acc((X_test, y_test))
-        elif isinstance(model, SemiSLModel):
-            model = MODELS[model_name]()
-            run_metrics_0 = model.train_ssl(
-                trial,
-                (X_train_l_0, y_train_l_0),
-                (X_train_ul_0, y_train_ul_0),
-                (X_val, y_val),
-                True,
-            )
-            test_acc_0 = model.top_1_acc((X_test, y_test))
+            if isinstance(model, SLModel):
+                model = MODELS[model_name]()
+                run_metrics_small = model.train(
+                    (X_train_l_small, y_train_l_small), (X_val, y_val), trial=trial
+                )
+                test_acc_smalls.append(model.top_1_acc((X_test, y_test)))
 
-            model = MODELS[model_name]()
-            run_metrics_1 = model.train_ssl(
-                trial,
-                (X_train_l_1, y_train_l_1),
-                (X_train_ul_1, y_train_ul_1),
-                (X_val, y_val),
-                True,
+                model = MODELS[model_name]()
+                run_metrics_large = model.train(
+                    (X_train_l_large, y_train_l_large), (X_val, y_val), trial=trial
+                )
+                test_acc_larges.append(model.top_1_acc((X_test, y_test)))
+            elif isinstance(model, SemiSLModel):
+                model = MODELS[model_name]()
+                run_metrics_small = model.train_ssl(
+                    (X_train_l_small, y_train_l_small),
+                    (X_train_ul_small, y_train_ul_small),
+                    (X_val, y_val),
+                    trial=trial,
+                )
+                test_acc_smalls.append(model.top_1_acc((X_test, y_test)))
+
+                model = MODELS[model_name]()
+                run_metrics_large = model.train_ssl(
+                    (X_train_l_large, y_train_l_large),
+                    (X_train_ul_large, y_train_ul_large),
+                    (X_val, y_val),
+                    trial=trial,
+                )
+                test_acc_larges.append(model.top_1_acc((X_test, y_test)))
+
+            non_step_metric_dict, step_metric_dicts = convert_metrics(
+                {
+                    f"split{i}": {
+                        "run_small": run_metrics_small,
+                        "run_large": run_metrics_large,
+                        "test_small": {"acc": test_acc_smalls[i]},
+                        "test_large": {"acc": test_acc_larges[i]},
+                    }
+                }
             )
-            test_acc_1 = model.top_1_acc((X_test, y_test))
+            for metric_dict in [non_step_metric_dict] + step_metric_dicts:
+                wandb.log(metric_dict)
 
-        run_metricss_0[trial.number] = run_metrics_0
-        run_metricss_1[trial.number] = run_metrics_1
-
-        non_step_metric_dict, step_metric_dicts = convert_metrics(
+        test_hmean_acc_small = hmean(test_acc_smalls)
+        test_hmean_acc_large = hmean(test_acc_larges)
+        wandb.log(
             {
-                "run_0": run_metrics_0,
-                "run_1": run_metrics_1,
                 "params": trial.params,
-                "test_0": {"acc": test_acc_0},
-                "test_1": {"acc": test_acc_1},
+                "test_small": {"hmean_acc": test_hmean_acc_small},
+                "test_large": {"hmean_acc": test_hmean_acc_large},
+                "value": (test_hmean_acc_small, test_hmean_acc_large),
             }
         )
-        for metric_dict in [non_step_metric_dict] + step_metric_dicts:
-            wandb.log(metric_dict)
-        return (test_acc_0, test_acc_1)
+
+        return (test_hmean_acc_small, test_hmean_acc_large)
 
     study.optimize(
         objective_fn, n_trials=n_sweep, callbacks=[wandbc], show_progress_bar=True
@@ -348,15 +336,11 @@ if __name__ == "__main__":
     parser_eval.add_argument("model", type=str, choices=MODELS.keys())
     parser_eval.add_argument("seed", type=int)
     parser_eval.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
-    parser_eval.add_argument("--n-trial", type=int, default=5)
     hyperparams = parser_eval.add_argument_group("hyperparams")
     hyperparams.add_argument("--max-depth", type=int, default=None)
     hyperparams.add_argument("--lr", type=float)
-    hyperparams.add_argument("--max-iter", type=int)
     hyperparams.add_argument("--min-samples-leaf", type=int)
     hyperparams.add_argument("--prob-threshold", type=float)
-    hyperparams.add_argument("--dropout-p", type=float)
-    hyperparams.add_argument("--n-blocks", type=int)
     hyperparams.add_argument("--n-estimators", type=int)
     hyperparams.add_argument("--layer-size", type=int)
     parser_eval.set_defaults(func=run_eval)
@@ -367,7 +351,8 @@ if __name__ == "__main__":
     parser_sweep.add_argument("model", type=str, choices=MODELS.keys())
     parser_sweep.add_argument("seed", type=int)
     parser_sweep.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
-    parser_sweep.add_argument("--n-sweep", type=int, default=100)
+    parser_sweep.add_argument("--n-sweep", type=int, default=40)
+    parser_sweep.add_argument("--n-split", type=int, default=5)
     parser_sweep.set_defaults(func=run_sweep)
 
     args = parser.parse_args()

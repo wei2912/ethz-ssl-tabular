@@ -3,7 +3,7 @@ from optuna.trial import Trial
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 import wandb
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from . import SLModel
 from utils.typing import Dataset
@@ -14,23 +14,23 @@ class RandomForestModel(SLModel):
         super().__init__()
 
     def train(
-        self, trial: Trial, train: Dataset, val: Dataset, is_sweep: bool, **_
+        self, train: Dataset, val: Dataset, trial: Optional[Trial], **_
     ) -> Dict[str, Any]:
         X_train, y_train = train
         X_val, y_val = val
 
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
-        if not is_sweep:
+        if trial is None:
             max_depth = wandb.config["max_depth"]
             n_estimators = wandb.config["n_estimators"]
             min_samples_leaf = wandb.config["min_samples_leaf"]
         else:
-            max_depth = trial.suggest_categorical("max_depth", [None, 3, 4, 5, 6])
+            max_depth = trial.suggest_categorical("max_depth", [None, 2, 3, 4])
             n_estimators = trial.suggest_int(
                 "n_estimators",
                 100,
                 1000,
-                step=50,
+                step=100,
             )
             min_samples_leaf = trial.suggest_int("min_samples_leaf", 1, 5, log=True)
 
@@ -56,30 +56,26 @@ class HGBTModel(SLModel):
 
     def train(
         self,
-        trial: Trial,
         train: Dataset,
         val: Dataset,
-        is_sweep: bool,
+        trial: Optional[Trial],
     ) -> Dict[str, Any]:
         X_train, y_train = train
         X_val, y_val = val
 
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
-        if not is_sweep:
+        if trial is None:
             max_depth = wandb.config["max_depth"]
             lr = wandb.config["lr"]
-            max_iter = wandb.config["max_iter"]
             min_samples_leaf = wandb.config["min_samples_leaf"]
         else:
-            max_depth = trial.suggest_categorical("max_depth", [None, 3, 4, 5, 6])
-            lr = trial.suggest_float("lr", 0.01, 1.0, log=True)
-            max_iter = trial.suggest_int("max_iter", 100, 300, step=25)
+            max_depth = trial.suggest_categorical("max_depth", [None, 2, 3, 4])
+            lr = trial.suggest_float("lr", 0.01, 1.0, step=0.01)
             min_samples_leaf = trial.suggest_int("min_samples_leaf", 1, 5, log=True)
 
         model = HistGradientBoostingClassifier(
             learning_rate=lr,
             max_depth=max_depth,
-            max_iter=max_iter,
             min_samples_leaf=min_samples_leaf,
         )
         self._model = model.fit(X_train, y_train)

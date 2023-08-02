@@ -1,10 +1,10 @@
 import numpy as np
 import numpy.typing as npt
-import optuna
+from optuna.trial import Trial
 import pandas as pd
 
 import abc
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 
 from utils.typing import Dataset
 
@@ -42,18 +42,16 @@ class SLModel(Model):
     @abc.abstractmethod
     def train(
         self,
-        trial: optuna.trial.Trial,
         train: Dataset,
         val: Dataset,
-        is_sweep: bool,
+        trial: Optional[Trial] = None,
         **kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         :param run: WandB run object
-        :param trial: Optuna trial object
         :param train: training dataset
         :param val: validation dataset
-        :param is_sweep: flag indicating if performing hyperparameter sweeps
+        :param trial: Optuna trial object, to be provided only if performing sweeps
         :return: log metrics
         """
         raise NotImplementedError()
@@ -66,22 +64,20 @@ class SemiSLModel(Model):
     @abc.abstractmethod
     def train_ssl(
         self,
-        trial: optuna.trial.Trial,
         train_l: Dataset,
         train_ul: Union[Dataset, npt.NDArray[np.float32]],
         val: Dataset,
-        is_sweep: bool,
+        trial: Optional[Trial] = None,
         **kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         :param run: WandB run object
-        :param trial: Optuna trial object
         :param train_l: training data (labelled)
         :param train_ul: training data (unlabelled), either in the form of Dataset with
         the corresponding labels (not used for training), or as np.ndarray without the
         corresponding labels
         :param val: validation data
-        :param is_sweep: flag indicating if performing hyperparameter sweeps
+        :param trial: Optuna trial object, to be provided only if performing sweeps
         :return: log metrics
         """
         raise NotImplementedError()
