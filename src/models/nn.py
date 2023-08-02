@@ -89,17 +89,20 @@ class MLPModel(SLModel):
 
         input_size = X_train.shape[1]
         n_class = len(np.unique(y_val))  # FIXME: contains all classes with high prob.
-        # to ensure drop_last does not discard the entire dataset
-        batch_size = min(MAX_BATCH_SIZE, len(X_train))
 
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         if trial is None:
             layer_size = wandb.config["layer_size"]
             lr = wandb.config["lr"]
+            batch_size = wandb.config["batch_size"]
         else:
-            layer_size = trial.suggest_int("layer_size", 64, 256, step=32)
-            lr = trial.suggest_float("lr", 0.01, 0.1, step=0.01)
+            layer_size = trial.suggest_int("layer_size", 64, 256, step=64)
+            lr = trial.suggest_float("lr", 0.001, 0.01, step=0.001)
+            batch_size = trial.suggest_int("batch_size", 64, 128, step=32)
         n_blocks = 4
+
+        # to ensure drop_last does not discard the entire dataset
+        batch_size = min(batch_size, len(X_train))
 
         self._mlp = MLP(input_size, n_class, n_blocks, layer_size).to(
             self._device, non_blocking=True

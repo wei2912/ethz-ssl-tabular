@@ -340,6 +340,7 @@ if __name__ == "__main__":
     parser_eval.add_argument("seed", type=int)
     parser_eval.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
     hyperparams = parser_eval.add_argument_group("hyperparams")
+    hyperparams.add_argument("--batch-size", type=int)
     hyperparams.add_argument("--layer-size", type=int)
     hyperparams.add_argument("--lr", type=float)
     hyperparams.add_argument("--max-depth", type=int, default=None)

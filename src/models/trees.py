@@ -64,7 +64,7 @@ class HGBTModel(SLModel):
             min_samples_leaf = wandb.config["min_samples_leaf"]
         else:
             max_depth = trial.suggest_categorical("max_depth", [None, 2, 3, 4])
-            lr = trial.suggest_float("lr", 0.01, 1.0, step=0.01)
+            lr = trial.suggest_float("lr", 0.05, 0.5, step=0.05)
             min_samples_leaf = trial.suggest_int("min_samples_leaf", 1, 5, log=True)
 
         model = HistGradientBoostingClassifier(
