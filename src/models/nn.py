@@ -92,8 +92,9 @@ class MLPModel(SLModel):
 
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         if trial is None:
-            layer_size = wandb.config["layer_size"]
-            lr = wandb.config["lr"]
+            params = wandb.config["params"]
+            layer_size = params["layer_size"]
+            lr = params["lr"]
         else:
             layer_size = trial.suggest_int("layer_size", 64, 256, step=64)
             lr = trial.suggest_float("lr", 0.004, 0.04, step=0.004)

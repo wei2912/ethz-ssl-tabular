@@ -38,7 +38,8 @@ class SelfTrainingModel_ThresholdSingleIterate(SemiSLModel):
 
         prob_threshold: float
         if trial is None:
-            prob_threshold = wandb.config["prob_threshold"]
+            params = wandb.config["params"]
+            prob_threshold = params["prob_threshold"]
         else:
             prob_threshold = trial.suggest_float("prob_threshold", 0.5, 0.99, step=0.01)
 

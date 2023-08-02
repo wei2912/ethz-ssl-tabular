@@ -6,6 +6,8 @@ from tqdm.auto import tqdm
 import wandb
 
 import argparse
+from pathlib import Path
+import json
 import os
 import random
 from typing import Callable, Dict, Tuple, Union
@@ -71,6 +73,10 @@ def run_eval(args: argparse.Namespace) -> None:
     dataset_id = DATASETS[dataset_name]
     project_name = f"{prefix}{dataset_name}"
 
+    fp = Path(f"config/{project_name}_{model_name}.json")
+    with fp.open() as f:
+        params = json.load(f)["params"]
+
     print("===")
     print("*** eval ***")
     print(f"Project: {project_name}")
@@ -79,7 +85,8 @@ def run_eval(args: argparse.Namespace) -> None:
     print(f"Model: {model_name}")
     print("---")
     print(f"Seed: {seed}")
-    print("---")
+    print(f"Params: {params}")
+    print("===")
 
     (X_train, y_train), (X_test, y_test), (X_val, y_val) = next(
         prepare_train_test_val(
@@ -93,7 +100,8 @@ def run_eval(args: argparse.Namespace) -> None:
         wandb.init(
             job_type="eval",
             config={
-                **vars(args),
+                "args": vars(args),
+                "params": params,
                 "l_split": l_split,
                 "ul_split": ul_split,
             },
@@ -155,6 +163,7 @@ def run_sweep(args: argparse.Namespace) -> None:
     )
     assert n_sweep > 0
     assert n_split > 0
+    PARETO_TOLERANCE = 0.01
 
     dataset_id = DATASETS[dataset_name]
     project_name = f"{prefix}{dataset_name}"
@@ -169,7 +178,7 @@ def run_sweep(args: argparse.Namespace) -> None:
     print(f"Seed: {seed}")
     print(f"No. of hyperparameter sweeps: {n_sweep}")
     print(f"No. of splits: {n_split}")
-    print("---")
+    print("===")
 
     (X_train, y_train), (X_test, y_test), (X_val, y_val) = next(
         prepare_train_test_val(
@@ -189,24 +198,22 @@ def run_sweep(args: argparse.Namespace) -> None:
     else:
         raise NotImplementedError("model type not supported")
 
-    wandbc = WeightsAndBiasesCallback(
-        wandb_kwargs={
-            "job_type": "sweep",
-            "config": {
-                "model": model_name,
-                "l_split_small": l_split_small,
-                "ul_split_small": ul_split_small,
-                "l_split_large": l_split_large,
-                "ul_split_large": ul_split_large,
-                "seed": seed,
-                "n_sweep": n_sweep,
-            },
-            "entity": entity,
-            "project": project_name,
-            "group": f"{model_name}",
+    wandb_kwargs = {
+        "job_type": "sweep",
+        "config": {
+            "model": model_name,
+            "l_split_small": l_split_small,
+            "ul_split_small": ul_split_small,
+            "l_split_large": l_split_large,
+            "ul_split_large": ul_split_large,
+            "seed": seed,
+            "n_sweep": n_sweep,
         },
-        as_multirun=True,
-    )
+        "entity": entity,
+        "project": project_name,
+        "group": f"{model_name}",
+    }
+    wandbc = WeightsAndBiasesCallback(wandb_kwargs=wandb_kwargs, as_multirun=True)
 
     (X_train_l_small, _), (X_train_ul_small, _) = prepare_l_ul(
         (X_train, y_train), l_split_small, ul_split_small, seed
@@ -225,16 +232,17 @@ def run_sweep(args: argparse.Namespace) -> None:
         f"({l_split_large:.3}/{ul_split_large:.3})"
     )
 
-    study_name = f"{model_name}.{seed}.sweep_{random.randrange(0, 16**6):06x}"
-    storage = f"sqlite:///{project_name}.db"
+    uid = f"{random.randrange(0, 16**6):06x}"
+    study_name = f"{model_name}.{seed}.sweep_{uid}"
+    storage_fp = Path(f"optuna/{project_name}_{uid}.db")
     study = optuna.create_study(
         study_name=study_name,
-        storage=storage,
+        storage=f"sqlite:///{storage_fp}",
         directions=["maximize", "maximize"],
         sampler=optuna.samplers.TPESampler(),
     )
     print(f">>> Study Name: {study_name}")
-    print(f">>> Storage: {storage}")
+    print(f">>> Storage: {storage_fp}")
 
     @wandbc.track_in_wandb()
     def objective_fn(trial: optuna.trial.Trial) -> Tuple[float, float]:
@@ -301,6 +309,11 @@ def run_sweep(args: argparse.Namespace) -> None:
 
         test_hmean_acc_small = hmean(test_acc_smalls)
         test_hmean_acc_large = hmean(test_acc_larges)
+        # round to closest multiple of PARETO_TOLERANCE (inexact)
+        values = (
+            round(test_hmean_acc_small / PARETO_TOLERANCE) * PARETO_TOLERANCE,
+            round(test_hmean_acc_large / PARETO_TOLERANCE) * PARETO_TOLERANCE,
+        )
         non_step_metric_dict, step_metric_dicts = convert_metrics(
             {
                 **metricss,
@@ -313,17 +326,55 @@ def run_sweep(args: argparse.Namespace) -> None:
                     "hmean_acc": test_hmean_acc_large,
                     "accs": test_acc_larges,
                 },
-                "value": (test_hmean_acc_small, test_hmean_acc_large),
+                "values": values,
             }
         )
         for metric_dict in [non_step_metric_dict] + step_metric_dicts:
             wandb.log(metric_dict)
 
-        return (test_hmean_acc_small, test_hmean_acc_large)
+        return values
 
     study.optimize(
         objective_fn, n_trials=n_sweep, callbacks=[wandbc], show_progress_bar=True
     )
+
+    run = wandb.init(
+        **{
+            **wandb_kwargs,
+            "job_type": "sweep_save",
+        }
+    )
+
+    """
+    Choose hyperparameters that perform best in the high data regime, while still
+    achieving good accuracies in the low data regime. This assumes that the sweep will
+    eventually reach a set of "optimal" hyperparameters which achieve within
+    PARETO_TOLERANCE/2 of the best accuracy in the high data regime, while also
+    performing well in the low data regime.
+    """
+    best_trial = max(study.best_trials, key=lambda trial: trial.values[1])
+    config_fp = Path(f"config/{project_name}_{model_name}.json")
+    config_fp.parent.mkdir(exist_ok=True, parents=True)
+    with config_fp.open(mode="w") as f:
+        config = {
+            "storage": str(storage_fp),
+            "study": study_name,
+            "number": best_trial.number,
+            "values": best_trial.values,
+            "params": best_trial.params,
+        }
+        print(config)
+        json.dump(config, f)
+
+    sweep_config_art = wandb.Artifact(name=f"sweep-config-{model_name}", type="json")
+    sweep_config_art.add_file(config_fp)
+    run.log_artifact(sweep_config_art)
+
+    sweep_db_art = wandb.Artifact(name=f"sweep-db-{model_name}", type="database")
+    sweep_db_art.add_file(storage_fp)
+    run.log_artifact(sweep_db_art, aliases=[uid])
+
+    run.finish()
 
 
 if __name__ == "__main__":
@@ -339,13 +390,6 @@ if __name__ == "__main__":
     parser_eval.add_argument("model", type=str, choices=MODELS.keys())
     parser_eval.add_argument("seed", type=int)
     parser_eval.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
-    hyperparams = parser_eval.add_argument_group("hyperparams")
-    hyperparams.add_argument("--batch-size", type=int)
-    hyperparams.add_argument("--layer-size", type=int)
-    hyperparams.add_argument("--lr", type=float)
-    hyperparams.add_argument("--max-depth", type=int, default=None)
-    hyperparams.add_argument("--min-samples-leaf", type=int)
-    hyperparams.add_argument("--prob-threshold", type=float)
     parser_eval.set_defaults(func=run_eval)
 
     parser_sweep = subparsers.add_parser("sweep")

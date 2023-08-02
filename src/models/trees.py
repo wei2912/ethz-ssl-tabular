@@ -24,8 +24,9 @@ class RandomForestModel(SLModel):
 
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         if trial is None:
-            max_depth = wandb.config["max_depth"]
-            min_samples_leaf = wandb.config["min_samples_leaf"]
+            params = wandb.config["params"]
+            max_depth = params["max_depth"]
+            min_samples_leaf = params["min_samples_leaf"]
         else:
             max_depth = trial.suggest_categorical("max_depth", [None, 2, 3, 4])
             min_samples_leaf = trial.suggest_int("min_samples_leaf", 1, 5, log=True)
@@ -62,9 +63,10 @@ class HGBTModel(SLModel):
 
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         if trial is None:
-            max_depth = wandb.config["max_depth"]
-            lr = wandb.config["lr"]
-            min_samples_leaf = wandb.config["min_samples_leaf"]
+            params = wandb.config["params"]
+            max_depth = params["max_depth"]
+            lr = params["lr"]
+            min_samples_leaf = params["min_samples_leaf"]
         else:
             max_depth = trial.suggest_categorical("max_depth", [None, 2, 3, 4])
             lr = trial.suggest_float("lr", 0.05, 0.5, step=0.05)
