@@ -2,6 +2,7 @@ import numpy as np
 import numpy.typing as npt
 from optuna.trial import Trial
 import pandas as pd
+import wandb
 
 import math
 from typing import Any, Callable, Dict, Union
@@ -39,7 +40,7 @@ class SelfTrainingModel_ThresholdSingleIterate(SemiSLModel):
         prob_threshold: float
         metrics: Dict[str, Any] = {}
         if not is_sweep:
-            prob_threshold = trial.suggest_categorical("prob_threshold", [0.9])
+            prob_threshold = wandb.config["prob_threshold"]
         else:
             prob_threshold = trial.suggest_float("prob_threshold", 0.5, 0.99, step=0.01)
 

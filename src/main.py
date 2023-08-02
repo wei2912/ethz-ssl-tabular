@@ -97,11 +97,9 @@ def run_eval(args: argparse.Namespace) -> None:
             wandb_kwargs={
                 "job_type": "eval",
                 "config": {
-                    "model": model_name,
+                    **vars(args),
                     "l_split": l_split,
                     "ul_split": ul_split,
-                    "seed": seed,
-                    "n_trial": n_trial,
                 },
                 "entity": entity,
                 "project": project_name,
@@ -345,24 +343,29 @@ if __name__ == "__main__":
     parser_preload_data.set_defaults(func=preload_data)
 
     parser_eval = subparsers.add_parser("eval")
-    parser_eval.add_argument("--entity", type=str, required=True)
-    parser_eval.add_argument(
-        "--dataset", type=str, choices=DATASETS.keys(), required=True
-    )
-    parser_eval.add_argument("--model", type=str, choices=MODELS.keys(), required=True)
+    parser_eval.add_argument("entity", type=str)
+    parser_eval.add_argument("dataset", type=str, choices=DATASETS.keys())
+    parser_eval.add_argument("model", type=str, choices=MODELS.keys())
+    parser_eval.add_argument("seed", type=int)
     parser_eval.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
-    parser_eval.add_argument("--seed", type=int, default=0)
     parser_eval.add_argument("--n-trial", type=int, default=5)
+    hyperparams = parser_eval.add_argument_group("hyperparams")
+    hyperparams.add_argument("--max-depth", type=int, default=None)
+    hyperparams.add_argument("--lr", type=float)
+    hyperparams.add_argument("--max-iter", type=int)
+    hyperparams.add_argument("--min-samples-leaf", type=int)
+    hyperparams.add_argument("--prob-threshold", type=float)
+    hyperparams.add_argument("--dropout-p", type=float)
+    hyperparams.add_argument("--n-blocks", type=int)
+    hyperparams.add_argument("--layer-size", type=int)
     parser_eval.set_defaults(func=run_eval)
 
     parser_sweep = subparsers.add_parser("sweep")
-    parser_sweep.add_argument("--entity", type=str, required=True)
-    parser_sweep.add_argument(
-        "--dataset", type=str, choices=DATASETS.keys(), required=True
-    )
-    parser_sweep.add_argument("--model", type=str, choices=MODELS.keys(), required=True)
+    parser_eval.add_argument("entity", type=str)
+    parser_eval.add_argument("dataset", type=str, choices=DATASETS.keys())
+    parser_eval.add_argument("model", type=str, choices=MODELS.keys())
+    parser_eval.add_argument("seed", type=int)
     parser_sweep.add_argument("--prefix", type=str, default="ethz-tabular-ssl_")
-    parser_sweep.add_argument("--seed", type=int, default=1000)
     parser_sweep.add_argument("--n-sweep", type=int, default=100)
     parser_sweep.set_defaults(func=run_sweep)
 

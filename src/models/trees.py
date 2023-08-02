@@ -1,6 +1,7 @@
 import numpy as np
 from optuna.trial import Trial
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
+import wandb
 
 from typing import Any, Dict
 
@@ -20,9 +21,9 @@ class RandomForestModel(SLModel):
 
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         if not is_sweep:
-            max_depth = trial.suggest_categorical("max_depth", [None])
-            n_estimators = trial.suggest_categorical("n_estimators", [300])
-            min_samples_leaf = trial.suggest_categorical("min_samples_leaf", [1])
+            max_depth = wandb.config["max_depth"]
+            n_estimators = wandb.config["n_estimators"]
+            min_samples_leaf = wandb.config["max_samples_leaf"]
         else:
             max_depth = trial.suggest_categorical("max_depth", [None, 3, 4, 5, 6])
             n_estimators = trial.suggest_int(
@@ -65,14 +66,15 @@ class HGBTModel(SLModel):
 
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         if not is_sweep:
-            max_depth = trial.suggest_categorical("max_depth", [None])
-            lr = trial.suggest_categorical("lr", [0.03])
-            max_iter = trial.suggest_categorical("max_iter", [300])
+            max_depth = wandb.config["max_depth"]
+            lr = wandb.config["lr"]
+            max_iter = wandb.config["max_iter"]
+            min_samples_leaf = wandb.config["min_samples_leaf"]
         else:
             max_depth = trial.suggest_categorical("max_depth", [None, 3, 4, 5, 6])
             lr = trial.suggest_float("lr", 0.01, 1.0, log=True)
             max_iter = trial.suggest_int("max_iter", 100, 300, step=25)
-        min_samples_leaf = trial.suggest_categorical("min_samples_leaf", [5])
+            min_samples_leaf = trial.suggest_int("min_samples_leaf", 1, 5, log=True)
 
         model = HistGradientBoostingClassifier(
             learning_rate=lr,
