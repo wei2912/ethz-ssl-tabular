@@ -22,17 +22,11 @@ class RandomForestModel(SLModel):
         # hyperparams space adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 20
         if trial is None:
             max_depth = wandb.config["max_depth"]
-            n_estimators = wandb.config["n_estimators"]
             min_samples_leaf = wandb.config["min_samples_leaf"]
         else:
             max_depth = trial.suggest_categorical("max_depth", [None, 2, 3, 4])
-            n_estimators = trial.suggest_int(
-                "n_estimators",
-                100,
-                1000,
-                step=100,
-            )
             min_samples_leaf = trial.suggest_int("min_samples_leaf", 1, 5, log=True)
+        n_estimators = 100
 
         model = RandomForestClassifier(
             max_depth=max_depth,

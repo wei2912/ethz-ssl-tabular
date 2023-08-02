@@ -97,12 +97,7 @@ class MLPModel(SLModel):
             layer_size = wandb.config["layer_size"]
             lr = wandb.config["lr"]
         else:
-            layer_size = trial.suggest_int(
-                "layer_size",
-                64,
-                512,
-                step=64,
-            )
+            layer_size = trial.suggest_int("layer_size", 64, 256, step=32)
             lr = trial.suggest_float("lr", 0.01, 0.1, step=0.01)
         n_blocks = 4
 
