@@ -105,7 +105,7 @@ def run_eval(args: argparse.Namespace) -> None:
 
     print(f"> Train/Test/Val Split: {len(X_train)}/{len(X_test)}/{len(X_val)}")
 
-    for l_split, ul_split in tqdm(get_splits(model_fn())):
+    for l_split, ul_split in tqdm(list(get_splits(model_fn()))):
         run = wandb.init(
             job_type="eval",
             config={
