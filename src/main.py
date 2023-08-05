@@ -10,7 +10,7 @@ from pathlib import Path
 import json
 import logging
 import os
-from typing import Callable, Dict, Optional, Set, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 import warnings
 
 from utils.data import (
@@ -69,8 +69,8 @@ def run_eval(args: argparse.Namespace) -> None:
     prefix: str = args.prefix
     seed: int = args.seed
     n_trial: int = args.n_trial
-    l_splits: Set[float] = set(args.l_splits)
-    ul_splits: Set[float] = set(args.ul_splits)
+    l_splits: List[float] = args.l_splits
+    ul_splits: List[float] = args.ul_splits
     assert n_trial > 0
 
     dataset_id = DATASETS[dataset_name]
@@ -101,12 +101,14 @@ def run_eval(args: argparse.Namespace) -> None:
     print(f"Dataset ID: {dataset_id}")
     print(f"Model: {model_name}")
     print(f"ST Type: {st_type}")
-    print(f"No. of Trials: {n_trial}")
-    print(f"L Splits: {l_splits}")
-    print(f"UL Splits: {ul_splits}")
     print("---")
     print(f"Seed: {seed}")
     print(f"Params: {params}")
+    print(f"No. of trials: {n_trial}")
+    l_splits_str = ", ".join(f"{l_split:.3}" for l_split in l_splits)
+    print(f"L Splits: [{l_splits_str}]")
+    ul_splits_str = ", ".join(f"{ul_split:.3}" for ul_split in ul_splits)
+    print(f"UL Splits: [{ul_splits_str}]")
     print("===")
 
     def model_fn() -> Union[SLModel, SemiSLModel]:
@@ -120,15 +122,23 @@ def run_eval(args: argparse.Namespace) -> None:
 
     print(f"> Train/Test/Val Split: {len(X_train)}/{len(X_test)}/{len(X_val)}")
 
-    splits = [
-        split
-        for split in filter(
-            lambda split: split[0] in l_splits and split[1] in ul_splits,
-            get_splits(model_fn()),
+    splits = list(
+        reversed(
+            sorted(
+                split
+                for split in filter(
+                    lambda split: split[0] in set(l_splits)
+                    and split[1] in set(ul_splits),
+                    get_splits(model_fn()),
+                )
+                for _ in range(n_trial)
+            )
         )
-        for _ in range(n_trial)
-    ]
-    print(f"> L/UL Splits: {splits}")
+    )
+    splits_str = ", ".join(
+        f"({l_split:.3}, {ul_split:.3})" for (l_split, ul_split) in splits
+    )
+    print(f"> L/UL Splits: [{splits_str}]")
     for l_split, ul_split in tqdm(splits):
         run = wandb.init(
             job_type="eval",
@@ -411,8 +421,8 @@ if __name__ == "__main__":
     )
     parser_eval.add_argument("--prefix", type=str, default="ethz-ssl-tabular_")
     parser_eval.add_argument("--n-trial", type=int, default=1)
-    l_splits = set(L_SPLITS)
-    ul_splits = set([0.0] + [split[1] for split in L_UL_SPLITS])
+    l_splits = sorted(set(L_SPLITS))
+    ul_splits = sorted(set([0.0] + [split[1] for split in L_UL_SPLITS]))
     parser_eval.add_argument(
         "--l-splits", type=float, nargs="*", choices=l_splits, default=l_splits
     )
