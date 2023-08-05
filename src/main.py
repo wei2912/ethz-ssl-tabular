@@ -10,16 +10,23 @@ from pathlib import Path
 import json
 import logging
 import os
-from typing import Callable, Dict, Optional, Tuple, Union
+from typing import Callable, Dict, Optional, Set, Tuple, Union
 import warnings
 
-from utils.data import get_splits, prepare_train_test_val, prepare_l_ul
+from utils.data import (
+    L_SPLITS,
+    L_UL_SPLITS,
+    get_splits,
+    prepare_train_test_val,
+    prepare_l_ul,
+)
 from utils.logging import convert_metrics
 from models import SemiSLModel, SLModel
 from models.nn import MLPModel
 from models.self_training import (
     SelfTrainingModel_Curriculum,
     SelfTrainingModel_ThresholdSingleIterate,
+    SelfTrainingModel_Fake,
 )
 from models.trees import HGBTModel, RandomForestModel
 
@@ -32,6 +39,7 @@ ST_TYPES: Dict[Optional[str], Callable[[Union[SLModel, SemiSLModel]], SemiSLMode
     None: lambda model: model(),
     "th-si": lambda model: SelfTrainingModel_ThresholdSingleIterate(model),
     "curr": lambda model: SelfTrainingModel_Curriculum(model),
+    "fake": lambda model: SelfTrainingModel_Fake(model),
 }
 
 # datasets are taken from https://arxiv.org/pdf/2207.08815.pdf pg. 13
@@ -60,6 +68,10 @@ def run_eval(args: argparse.Namespace) -> None:
     entity: str = args.entity
     prefix: str = args.prefix
     seed: int = args.seed
+    n_trial: int = args.n_trial
+    l_splits: Set[float] = set(args.l_splits)
+    ul_splits: Set[float] = set(args.ul_splits)
+    assert n_trial > 0
 
     dataset_id = DATASETS[dataset_name]
     project_name = f"{prefix}{dataset_name}"
@@ -89,6 +101,9 @@ def run_eval(args: argparse.Namespace) -> None:
     print(f"Dataset ID: {dataset_id}")
     print(f"Model: {model_name}")
     print(f"ST Type: {st_type}")
+    print(f"No. of Trials: {n_trial}")
+    print(f"L Splits: {l_splits}")
+    print(f"UL Splits: {ul_splits}")
     print("---")
     print(f"Seed: {seed}")
     print(f"Params: {params}")
@@ -105,7 +120,16 @@ def run_eval(args: argparse.Namespace) -> None:
 
     print(f"> Train/Test/Val Split: {len(X_train)}/{len(X_test)}/{len(X_val)}")
 
-    for l_split, ul_split in tqdm(list(get_splits(model_fn()))):
+    splits = [
+        split
+        for split in filter(
+            lambda split: split[0] in l_splits and split[1] in ul_splits,
+            get_splits(model_fn()),
+        )
+        for _ in range(n_trial)
+    ]
+    print(f"> L/UL Splits: {splits}")
+    for l_split, ul_split in tqdm(splits):
         run = wandb.init(
             job_type="eval",
             config={
@@ -153,24 +177,16 @@ def run_eval(args: argparse.Namespace) -> None:
 
 
 def run_sweep(args: argparse.Namespace) -> None:
-    dataset_name: str
-    model_name: str
-    entity: str
-    prefix: str
-    seed: int
-    n_sweep: int
-    n_split: int
-    dataset_name, model_name, entity, prefix, seed, n_sweep, n_split = (
-        args.dataset,
-        args.model,
-        args.entity,
-        args.prefix,
-        args.seed,
-        args.n_sweep,
-        args.n_split,
-    )
+    dataset_name: str = args.dataset
+    model_name: str = args.model
+    entity: str = args.entity
+    prefix: str = args.prefix
+    seed: int = args.seed
+    n_sweep: int = args.n_seed
+    n_split: int = args.n_split
     assert n_sweep > 0
     assert n_split > 0
+
     PARETO_TOLERANCE = 0.01
 
     dataset_id = DATASETS[dataset_name]
@@ -394,6 +410,15 @@ if __name__ == "__main__":
         "--st-type", type=str, choices=ST_TYPES.keys(), default=None
     )
     parser_eval.add_argument("--prefix", type=str, default="ethz-ssl-tabular_")
+    parser_eval.add_argument("--n-trial", type=int, default=1)
+    l_splits = set(L_SPLITS)
+    ul_splits = set([0.0] + [split[1] for split in L_UL_SPLITS])
+    parser_eval.add_argument(
+        "--l-splits", type=float, nargs="*", choices=l_splits, default=l_splits
+    )
+    parser_eval.add_argument(
+        "--ul-splits", type=float, nargs="*", choices=ul_splits, default=ul_splits
+    )
     parser_eval.set_defaults(func=run_eval)
 
     parser_sweep = subparsers.add_parser("sweep")
