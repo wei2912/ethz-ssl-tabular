@@ -45,13 +45,9 @@ ST_TYPES: Dict[Optional[str], Callable[[Union[SLModel, SemiSLModel]], SemiSLMode
 # datasets are taken from https://arxiv.org/pdf/2207.08815.pdf pg. 13
 # and https://arxiv.org/pdf/2106.03253.pdf pg. 12
 DATASETS: Dict[str, int] = {
-    # 57.5k samples, 55 features, 2 classes
     "jannis": 45021,
-    # 13.9k samples, 130 features, 6 classes
     "gas-drift-different-concentrations": 1477,
-    # 98k samples, 29 features, 2 classes
     "higgs": 23512,
-    # 581k samples, 55 features, 7 classes
     "covertype": 1596,
 }
 
