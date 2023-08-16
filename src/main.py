@@ -63,7 +63,7 @@ def run_eval(args: argparse.Namespace) -> None:
     st_type: str = args.st_type
     entity: str = args.entity
     prefix: str = args.prefix
-    seed: int = args.seed
+    seeds: List[int] = args.seeds
     n_trial: int = args.n_trial
     l_splits: List[float] = args.l_splits
     ul_splits: List[float] = args.ul_splits
@@ -98,7 +98,7 @@ def run_eval(args: argparse.Namespace) -> None:
     print(f"Model: {model_name}")
     print(f"ST Type: {st_type}")
     print("---")
-    print(f"Seed: {seed}")
+    print(f"Seeds: {seeds}")
     print(f"Params: {params}")
     print(f"No. of trials: {n_trial}")
     l_splits_str = ", ".join(f"{l_split:.3}" for l_split in l_splits)
@@ -110,76 +110,78 @@ def run_eval(args: argparse.Namespace) -> None:
     def model_fn() -> Union[SLModel, SemiSLModel]:
         return ST_TYPES[st_type](MODELS[model_name])
 
-    (X_train, y_train), (X_test, y_test), (X_val, y_val) = next(
-        prepare_train_test_val(
-            dataset_id, 1, seed, preprocess_func=model_fn().preprocess_data
+    for seed in seeds:
+        print(f"> Seed: {seed}")
+
+        (X_train, y_train), (X_test, y_test), (X_val, y_val) = next(
+            prepare_train_test_val(
+                dataset_id, 1, seed, preprocess_func=model_fn().preprocess_data
+            )
         )
-    )
+        print(f"> Train/Test/Val Split: {len(X_train)}/{len(X_test)}/{len(X_val)}")
 
-    print(f"> Train/Test/Val Split: {len(X_train)}/{len(X_test)}/{len(X_val)}")
-
-    splits = list(
-        reversed(
-            sorted(
-                split
-                for split in filter(
-                    lambda split: split[0] in set(l_splits)
-                    and split[1] in set(ul_splits),
-                    get_splits(model_fn()),
+        splits = list(
+            reversed(
+                sorted(
+                    split
+                    for split in filter(
+                        lambda split: split[0] in set(l_splits)
+                        and split[1] in set(ul_splits),
+                        get_splits(model_fn()),
+                    )
+                    for _ in range(n_trial)
                 )
-                for _ in range(n_trial)
             )
         )
-    )
-    splits_str = ", ".join(
-        f"({l_split:.3}, {ul_split:.3})" for (l_split, ul_split) in splits
-    )
-    print(f"> L/UL Splits: [{splits_str}]")
-    for l_split, ul_split in tqdm(splits):
-        run = wandb.init(
-            job_type="eval",
-            config={
-                "args": vars(args),
-                "params": params,
-                "split": {
-                    "l_split": l_split,
-                    "ul_split": ul_split,
+        splits_str = ", ".join(
+            f"({l_split:.3}, {ul_split:.3})" for (l_split, ul_split) in splits
+        )
+        print(f"> L/UL Splits: [{splits_str}]")
+        for l_split, ul_split in tqdm(splits):
+            run = wandb.init(
+                job_type="eval",
+                config={
+                    "args": vars(args),
+                    "params": params,
+                    "split": {
+                        "l_split": l_split,
+                        "ul_split": ul_split,
+                    },
                 },
-            },
-            entity=entity,
-            project=project_name,
-            group=f"{model_name}_{st_type}_{l_split:.3}_{ul_split:.3}",
-        )
-
-        (X_train_l, y_train_l), (X_train_ul, y_train_ul) = prepare_l_ul(
-            (X_train, y_train), l_split, ul_split, seed
-        )
-
-        print(
-            f">> L/UL Split: {len(X_train_l)}/{len(X_train_ul)} "
-            f"({l_split:.3}/{ul_split:.3})"
-        )
-
-        model = model_fn()
-        if isinstance(model, SLModel):
-            run_metrics = model.train((X_train_l, y_train_l), (X_val, y_val))
-        elif isinstance(model, SemiSLModel):
-            run_metrics = model.train_ssl(
-                (X_train_l, y_train_l),
-                (X_train_ul, y_train_ul),
-                (X_val, y_val),
+                entity=entity,
+                project=project_name,
+                group=f"{model_name}_{st_type}_{l_split:.3}_{ul_split:.3}",
             )
 
-        test_acc = model.top_1_acc((X_test, y_test))
-        test_metrics = {"acc": test_acc}
+            (X_train_l, y_train_l), (X_train_ul, y_train_ul) = prepare_l_ul(
+                (X_train, y_train), l_split, ul_split, seed
+            )
 
-        non_step_metric_dict, step_metric_dicts = convert_metrics(
-            {"run": run_metrics, "test": test_metrics}
-        )
-        for metric_dict in [non_step_metric_dict] + step_metric_dicts:
-            run.log(metric_dict)
+            print(
+                f">> L/UL Split: {len(X_train_l)}/{len(X_train_ul)} "
+                f"({l_split:.3}/{ul_split:.3})"
+            )
 
-        run.finish()
+            model = model_fn()
+            if isinstance(model, SLModel):
+                run_metrics = model.train((X_train_l, y_train_l), (X_val, y_val))
+            elif isinstance(model, SemiSLModel):
+                run_metrics = model.train_ssl(
+                    (X_train_l, y_train_l),
+                    (X_train_ul, y_train_ul),
+                    (X_val, y_val),
+                )
+
+            test_acc = model.top_1_acc((X_test, y_test))
+            test_metrics = {"acc": test_acc}
+
+            non_step_metric_dict, step_metric_dicts = convert_metrics(
+                {"run": run_metrics, "test": test_metrics}
+            )
+            for metric_dict in [non_step_metric_dict] + step_metric_dicts:
+                run.log(metric_dict)
+
+            run.finish()
 
 
 def run_sweep(args: argparse.Namespace) -> None:
@@ -411,7 +413,7 @@ if __name__ == "__main__":
     parser_eval.add_argument("entity", type=str)
     parser_eval.add_argument("dataset", type=str, choices=DATASETS.keys())
     parser_eval.add_argument("model", type=str, choices=MODELS.keys())
-    parser_eval.add_argument("seed", type=int)
+    parser_eval.add_argument("seeds", type=int, nargs="+")
     parser_eval.add_argument(
         "--st-type", type=str, choices=ST_TYPES.keys(), default=None
     )
