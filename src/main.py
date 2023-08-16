@@ -142,6 +142,7 @@ def run_eval(args: argparse.Namespace) -> None:
                 job_type="eval",
                 config={
                     "args": vars(args),
+                    "seed": seed,
                     "params": params,
                     "split": {
                         "l_split": l_split,
@@ -234,6 +235,7 @@ def run_sweep(args: argparse.Namespace) -> None:
         "job_type": "sweep",
         "config": {
             "args": vars(args),
+            "seed": seed,
             "split": {
                 "l_split_0": l_split_0,
                 "ul_split_0": ul_split_0,
