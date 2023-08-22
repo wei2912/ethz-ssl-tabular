@@ -27,6 +27,7 @@ from models.self_training import (
     SelfTrainingModel_Curriculum,
     SelfTrainingModel_ThresholdSingleIterate,
     SelfTrainingModel_Fake,
+    SelfTrainingModel_UDA,
 )
 from models.trees import HGBTModel, RandomForestModel
 
@@ -40,6 +41,7 @@ ST_TYPES: Dict[Optional[str], Callable[[Union[SLModel, SemiSLModel]], SemiSLMode
     "th-si": lambda model: SelfTrainingModel_ThresholdSingleIterate(model),
     "curr": lambda model: SelfTrainingModel_Curriculum(model),
     "fake": lambda model: SelfTrainingModel_Fake(model),
+    "uda": lambda model: SelfTrainingModel_UDA(model),
 }
 
 # datasets are taken from https://arxiv.org/pdf/2207.08815.pdf pg. 13

@@ -8,7 +8,37 @@ import random
 from typing import Any, Callable, Dict, Optional, Union
 
 from . import SemiSLModel, SLModel
+from .nn import MLPModel
 from utils.typing import Dataset
+
+
+# FIXME - name this more appropriately
+class SelfTrainingModel_UDA(SemiSLModel):
+    def __init__(self, base_model_fn: Callable[[], SLModel]):
+        """
+        :param base_model_fn: constructor for base supervised learning (SL) model
+        """
+        super().__init__()
+        self.base_model_fn = base_model_fn
+        if not isinstance(self.base_model_fn(), MLPModel):
+            raise NotImplementedError("only mlp model is supported with UDA")
+
+    def preprocess_data(self, X: pd.DataFrame, y: pd.Series) -> Dataset:
+        return self.base_model_fn().preprocess_data(X, y)
+
+    def train_ssl(
+        self,
+        train_l: Dataset,
+        train_ul: Union[Dataset, npt.NDArray[np.float32]],
+        val: Dataset,
+        trial: Optional[Trial] = None,
+    ) -> Dict[str, Any]:
+        X_train_ul = train_ul[0] if type(train_ul) is tuple else train_ul
+        self._model = self.base_model_fn(is_uda=True)
+        return self._model.train(train_l, val, trial=trial, X_train_ul=X_train_ul)
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        return self._model.predict_proba(X)
 
 
 class SelfTrainingModel_ThresholdSingleIterate(SemiSLModel):

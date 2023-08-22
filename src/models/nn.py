@@ -1,15 +1,19 @@
 import numpy as np
+import numpy.typing as npt
 from optuna.trial import Trial
 import pandas as pd
 from sklearn.preprocessing import QuantileTransformer
 import torch
 from torch import nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 import wandb
 
+from itertools import cycle
 from typing import Any, Dict, Optional
 
 from . import SLModel
+from .uda import scarf_corrupt
 from utils.logging import Stepwise
 from utils.typing import Dataset
 
@@ -65,11 +69,12 @@ SEED = 123456
 
 
 class MLPModel(SLModel):
-    def __init__(self):
+    def __init__(self, is_uda: bool = False):
         super().__init__()
 
         self._is_device_cuda = torch.cuda.is_available()
         self._device = torch.device("cuda" if self._is_device_cuda else "cpu")
+        self._is_uda = is_uda
 
     def preprocess_data(self, X: pd.DataFrame, y: pd.Series) -> Dataset:
         # transformation adapted from https://arxiv.org/pdf/2207.08815.pdf pg. 4
@@ -82,7 +87,11 @@ class MLPModel(SLModel):
         return (X.to_numpy(dtype=np.float32), y.cat.codes.to_numpy(dtype=np.int8))
 
     def train(
-        self, train: Dataset, val: Dataset, trial: Optional[Trial] = None
+        self,
+        train: Dataset,
+        val: Dataset,
+        trial: Optional[Trial] = None,
+        X_train_ul: npt.NDArray[np.float32] = None,
     ) -> Dict[str, Any]:
         X_train, y_train = train
         X_val, y_val = val
@@ -99,6 +108,7 @@ class MLPModel(SLModel):
             layer_size = trial.suggest_int("layer_size", 64, 256, step=64)
             lr = trial.suggest_float("lr", 0.004, 0.04, step=0.004)
         n_blocks = 4
+        ul_weight = 1.0  # FIXME
 
         self._mlp = MLP(input_size, n_class, n_blocks, layer_size).to(
             self._device, non_blocking=True
@@ -122,6 +132,14 @@ class MLPModel(SLModel):
             shuffle=False,
             pin_memory=self._is_device_cuda,
         )
+        if self._is_uda:
+            assert X_train_ul is not None
+            ul_loader = DataLoader(
+                TensorDataset(torch.from_numpy(X_train_ul).float()),
+                batch_size=BATCH_SIZE,
+                shuffle=True,
+                pin_memory=self._is_device_cuda,
+            )
 
         n_iter_per_epoch = len(train_loader)
         patience = N_ITER // (4 * n_iter_per_epoch)
@@ -132,12 +150,14 @@ class MLPModel(SLModel):
             optimizer, mode="min", patience=patience, factor=factor
         )
         # account for different minibatch sizes
-        criterion = torch.nn.CrossEntropyLoss(reduction="sum")
+        criterion = torch.nn.CrossEntropyLoss()
 
         i, epoch = 0, 0
         train_losses, train_accs = [], []
         val_losses, val_accs = [], []
         lrs = []
+        if self._is_uda:
+            cycle_ul_loader = cycle(ul_loader)
         while i < N_ITER:
             train_loss = 0.0
             for X_train_b, y_train_b in train_loader:
@@ -151,7 +171,21 @@ class MLPModel(SLModel):
 
                 optimizer.zero_grad()
 
-                loss = criterion(self._mlp(X_train_b), y_train_b) / len(X_train_b)
+                loss = criterion(self._mlp(X_train_b), y_train_b)
+                if self._is_uda:
+                    (X_ul_b,) = next(cycle_ul_loader)
+                    X_ul_corr_b = torch.from_numpy(
+                        scarf_corrupt(X_ul_b.numpy(), X_train_ul)
+                    )
+                    X_ul_b = X_ul_b.to(self._device, non_blocking=True)
+                    X_ul_corr_b = X_ul_corr_b.to(self._device, non_blocking=True)
+
+                    # only propagate gradient for model on corrupted sample
+                    loss_reg = criterion(
+                        self._mlp(X_ul_corr_b),
+                        F.softmax(self._mlp(X_ul_b).detach(), dim=1),
+                    )
+                    loss += ul_weight * loss_reg
                 train_loss += loss.item()
 
                 loss.backward()
@@ -172,7 +206,7 @@ class MLPModel(SLModel):
                     y_val_b = y_val_b.to(self._device, non_blocking=True)
 
                     z_val_b = self._mlp(X_val_b)
-                    val_loss += criterion(z_val_b, y_val_b).item() / len(X_val_b)
+                    val_loss += criterion(z_val_b, y_val_b).item()
                 val_loss /= len(val_loader)
                 val_acc = self.top_1_acc((X_val, y_val))
 
