@@ -156,7 +156,7 @@ def run_eval(args: argparse.Namespace) -> None:
                 },
                 entity=entity,
                 project=project_name,
-                group=f"{model_name}_{ssl_type}_{l_split:.3}_{ul_split:.3}",
+                group=f"{model_name}_{ssl_type}_{l_split:.3}_{ul_split:.3}_{seed}",
             )
 
             (X_train_l, y_train_l), (X_train_ul, y_train_ul) = prepare_l_ul(
