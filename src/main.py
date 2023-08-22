@@ -123,18 +123,17 @@ def run_eval(args: argparse.Namespace) -> None:
         )
         print(f"> Train/Test/Val Split: {len(X_train)}/{len(X_test)}/{len(X_val)}")
 
-        splits = list(
-            reversed(
-                sorted(
-                    (trial,) + split
-                    for split in filter(
-                        lambda split: split[0] in set(l_splits)
-                        and split[1] in set(ul_splits),
-                        get_splits(model_fn()),
-                    )
-                    for trial in range(n_trial)
+        splits = sorted(
+            (
+                (trial,) + split
+                for split in filter(
+                    lambda split: split[0] in set(l_splits)
+                    and split[1] in set(ul_splits),
+                    get_splits(model_fn()),
                 )
-            )
+                for trial in range(n_trial)
+            ),
+            key=lambda t: (t[0], -t[1], -t[2]),
         )
         splits_str = ", ".join(
             f"({trial}, {l_split:.3}, {ul_split:.3})"
