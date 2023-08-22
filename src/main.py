@@ -37,7 +37,7 @@ MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
     "mlp": MLPModel,
 }
 SSL_TYPES: Dict[Optional[str], Callable[[Union[SLModel, SemiSLModel]], SemiSLModel]] = {
-    None: lambda model: model(),
+    "none": lambda model: model(),
     "th-si": lambda model: SelfTrainingModel_ThresholdSingleIterate(model),
     "curr": lambda model: SelfTrainingModel_Curriculum(model),
     "curr-uda": lambda model: SelfTrainingModel_Curriculum(model, is_uda=True),
@@ -420,7 +420,7 @@ if __name__ == "__main__":
     parser_eval.add_argument("model", type=str, choices=MODELS.keys())
     parser_eval.add_argument("seeds", type=int, nargs="+")
     parser_eval.add_argument(
-        "--ssl-type", type=str, choices=SSL_TYPES.keys(), default=None
+        "--ssl-type", type=str, choices=SSL_TYPES.keys(), default="none"
     )
     parser_eval.add_argument("--prefix", type=str, default="ethz-ssl-tabular_")
     parser_eval.add_argument("--n-trial", type=int, default=1)
