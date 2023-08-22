@@ -94,7 +94,6 @@ class MLPModel(SLModel):
     ) -> Dict[str, Any]:
         X_train, y_train = train
         X_val, y_val = val
-        assert self._is_uda != (X_train_full is None)
 
         input_size = X_train.shape[1]
         n_class = len(np.unique(y_val))  # FIXME: contains all classes with high prob.
@@ -133,6 +132,7 @@ class MLPModel(SLModel):
             pin_memory=self._is_device_cuda,
         )
         if self._is_uda:
+            assert X_train_full is not None
             ul_loader = DataLoader(
                 TensorDataset(torch.from_numpy(X_train_full).float()),
                 batch_size=BATCH_SIZE,
