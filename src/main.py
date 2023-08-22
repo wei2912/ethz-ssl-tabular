@@ -126,21 +126,22 @@ def run_eval(args: argparse.Namespace) -> None:
         splits = list(
             reversed(
                 sorted(
-                    split
+                    (trial,) + split
                     for split in filter(
                         lambda split: split[0] in set(l_splits)
                         and split[1] in set(ul_splits),
                         get_splits(model_fn()),
                     )
-                    for _ in range(n_trial)
+                    for trial in range(n_trial)
                 )
             )
         )
         splits_str = ", ".join(
-            f"({l_split:.3}, {ul_split:.3})" for (l_split, ul_split) in splits
+            f"({trial}, {l_split:.3}, {ul_split:.3})"
+            for (trial, l_split, ul_split) in splits
         )
         print(f"> L/UL Splits: [{splits_str}]")
-        for l_split, ul_split in tqdm(splits):
+        for trial, l_split, ul_split in tqdm(splits):
             run = wandb.init(
                 job_type="eval",
                 config={
@@ -148,6 +149,7 @@ def run_eval(args: argparse.Namespace) -> None:
                     "seed": seed,
                     "params": params,
                     "split": {
+                        "trial": trial,
                         "l_split": l_split,
                         "ul_split": ul_split,
                     },
