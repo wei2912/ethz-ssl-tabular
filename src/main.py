@@ -36,7 +36,7 @@ MODELS: Dict[str, Callable[[], Union[SLModel, SemiSLModel]]] = {
     "hgbt": HGBTModel,
     "mlp": MLPModel,
 }
-ST_TYPES: Dict[Optional[str], Callable[[Union[SLModel, SemiSLModel]], SemiSLModel]] = {
+SSL_TYPES: Dict[Optional[str], Callable[[Union[SLModel, SemiSLModel]], SemiSLModel]] = {
     None: lambda model: model(),
     "th-si": lambda model: SelfTrainingModel_ThresholdSingleIterate(model),
     "curr": lambda model: SelfTrainingModel_Curriculum(model),
@@ -63,7 +63,7 @@ def preload_data(_) -> None:
 def run_eval(args: argparse.Namespace) -> None:
     dataset_name: str = args.dataset
     model_name: str = args.model
-    st_type: str = args.st_type
+    ssl_type: str = args.ssl_type
     entity: str = args.entity
     prefix: str = args.prefix
     seeds: List[int] = args.seeds
@@ -80,7 +80,7 @@ def run_eval(args: argparse.Namespace) -> None:
         config={"args": vars(args)},
         entity=entity,
         project=project_name,
-        group=f"{model_name}_{st_type}",
+        group=f"{model_name}_{ssl_type}",
     )
 
     sweep_config_art_name = f"sweep-config-{model_name}:latest"
@@ -99,7 +99,7 @@ def run_eval(args: argparse.Namespace) -> None:
     print(f"Dataset: {dataset_name}")
     print(f"Dataset ID: {dataset_id}")
     print(f"Model: {model_name}")
-    print(f"ST Type: {st_type}")
+    print(f"SSL Type: {ssl_type}")
     print("---")
     print(f"Seeds: {seeds}")
     print(f"Params: {params}")
@@ -111,7 +111,7 @@ def run_eval(args: argparse.Namespace) -> None:
     print("===")
 
     def model_fn() -> Union[SLModel, SemiSLModel]:
-        return ST_TYPES[st_type](MODELS[model_name])
+        return SSL_TYPES[ssl_type](MODELS[model_name])
 
     for seed in seeds:
         print(f"> Seed: {seed}")
@@ -154,7 +154,7 @@ def run_eval(args: argparse.Namespace) -> None:
                 },
                 entity=entity,
                 project=project_name,
-                group=f"{model_name}_{st_type}_{l_split:.3}_{ul_split:.3}",
+                group=f"{model_name}_{ssl_type}_{l_split:.3}_{ul_split:.3}",
             )
 
             (X_train_l, y_train_l), (X_train_ul, y_train_ul) = prepare_l_ul(
@@ -420,7 +420,7 @@ if __name__ == "__main__":
     parser_eval.add_argument("model", type=str, choices=MODELS.keys())
     parser_eval.add_argument("seeds", type=int, nargs="+")
     parser_eval.add_argument(
-        "--st-type", type=str, choices=ST_TYPES.keys(), default=None
+        "--ssl-type", type=str, choices=SSL_TYPES.keys(), default=None
     )
     parser_eval.add_argument("--prefix", type=str, default="ethz-ssl-tabular_")
     parser_eval.add_argument("--n-trial", type=int, default=1)

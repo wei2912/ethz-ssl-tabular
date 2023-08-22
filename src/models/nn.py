@@ -152,11 +152,13 @@ class MLPModel(SLModel):
 
         i, epoch = 0, 0
         train_losses, train_accs = [], []
+        train_l_losses, train_ul_losses = [], []
         val_losses, val_accs = [], []
         lrs = []
         while i < N_ITER:
-            train_loss = 0.0
-            ul_loader_iter = iter(ul_loader)
+            train_loss, train_l_loss, train_ul_loss = 0.0, 0.0, 0.0
+            if self._is_uda:
+                ul_loader_iter = iter(ul_loader)
             for X_train_b, y_train_b in train_loader:
                 if i >= N_ITER:
                     break
@@ -169,6 +171,7 @@ class MLPModel(SLModel):
                 optimizer.zero_grad()
 
                 loss = criterion(self._mlp(X_train_b), y_train_b)
+                train_l_loss += loss.item()
                 if self._is_uda:
                     try:
                         (X_ul_b,) = next(ul_loader_iter)
@@ -187,6 +190,7 @@ class MLPModel(SLModel):
                         self._mlp(X_ul_corr_b),
                         F.softmax(self._mlp(X_ul_b).detach(), dim=1),
                     )
+                    train_ul_loss += loss_reg
                     loss += ul_weight * loss_reg
                 train_loss += loss.item()
 
@@ -201,6 +205,11 @@ class MLPModel(SLModel):
                 train_acc = self.top_1_acc((X_train, y_train))
                 train_losses.append(train_loss)
                 train_accs.append(train_acc)
+
+                train_l_loss /= len(train_loader)
+                train_ul_loss /= len(train_loader)
+                train_l_losses.append(train_l_loss)
+                train_ul_losses.append(train_ul_loss)
 
                 val_loss = 0.0
                 for X_val_b, y_val_b in val_loader:
@@ -233,6 +242,8 @@ class MLPModel(SLModel):
                 "per_epoch": {
                     "lrs": Stepwise(lrs),
                     "train_losses": Stepwise(train_losses),
+                    "train_l_losses": Stepwise(train_l_losses),
+                    "train_ul_losses": Stepwise(train_ul_losses),
                     "train_accs": Stepwise(train_accs),
                     "val_losses": Stepwise(val_losses),
                     "val_accs": Stepwise(val_accs),
