@@ -9,7 +9,6 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 import wandb
 
-from itertools import cycle
 from typing import Any, Dict, Optional
 
 from . import SLModel
@@ -149,17 +148,15 @@ class MLPModel(SLModel):
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", patience=patience, factor=factor
         )
-        # account for different minibatch sizes
         criterion = torch.nn.CrossEntropyLoss()
 
         i, epoch = 0, 0
         train_losses, train_accs = [], []
         val_losses, val_accs = [], []
         lrs = []
-        if self._is_uda:
-            cycle_ul_loader = cycle(ul_loader)
         while i < N_ITER:
             train_loss = 0.0
+            ul_loader_iter = iter(ul_loader)
             for X_train_b, y_train_b in train_loader:
                 if i >= N_ITER:
                     break
@@ -173,7 +170,12 @@ class MLPModel(SLModel):
 
                 loss = criterion(self._mlp(X_train_b), y_train_b)
                 if self._is_uda:
-                    (X_ul_b,) = next(cycle_ul_loader)
+                    try:
+                        (X_ul_b,) = next(ul_loader_iter)
+                    except StopIteration:
+                        ul_loader_iter = iter(ul_loader)
+                        (X_ul_b,) = next(ul_loader_iter)
+
                     X_ul_corr_b = torch.from_numpy(
                         scarf_corrupt(X_ul_b.numpy(), X_train_ul)
                     )
