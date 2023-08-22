@@ -33,9 +33,11 @@ class SelfTrainingModel_UDA(SemiSLModel):
         val: Dataset,
         trial: Optional[Trial] = None,
     ) -> Dict[str, Any]:
+        X_train_l, _ = train_l
         X_train_ul = train_ul[0] if type(train_ul) is tuple else train_ul
+        X_train_full = np.concatenate([X_train_l, X_train_ul])
         self._model = self.base_model_fn(is_uda=True)
-        return self._model.train(train_l, val, trial=trial, X_train_ul=X_train_ul)
+        return self._model.train(train_l, val, trial=trial, X_train_full=X_train_full)
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         return self._model.predict_proba(X)
@@ -112,16 +114,18 @@ class SelfTrainingModel_Curriculum(SemiSLModel):
     Adapted from https://arxiv.org/abs/2001.06001.
     """
 
-    def __init__(self, base_model_fn: Callable[[], SLModel]):
+    def __init__(self, base_model_fn: Callable[[], SLModel], is_uda: bool = False):
         """
         :param base_model_fn: constructor for base supervised learning (SL) model, used
         for pseudolabelling
+        :param is_uda: flag indicating if UDA is applied
         """
         super().__init__()
-        self.base_model_fn = base_model_fn
+        self._base_model_fn = base_model_fn
+        self._is_uda = is_uda
 
     def preprocess_data(self, X: pd.DataFrame, y: pd.Series) -> Dataset:
-        return self.base_model_fn().preprocess_data(X, y)
+        return self._base_model_fn().preprocess_data(X, y)
 
     def train_ssl(
         self,
@@ -134,17 +138,19 @@ class SelfTrainingModel_Curriculum(SemiSLModel):
         X_train_ul, y_train_ul = (
             train_ul if type(train_ul) is tuple else (train_ul, None)
         )
+        X_train_full = np.concatenate([X_train_l, X_train_ul])
         X_val, y_val = val
 
         STEP_THRESHOLD: float = 0.2
 
         metrics = {}
 
-        self._model = self.base_model_fn()
+        self._model = self._base_model_fn(is_uda=self._is_uda)
         metrics["initial"] = self._model.train(
             (X_train_l, y_train_l),
             (X_val, y_val),
             trial=trial,
+            X_train_full=X_train_full,
         )
 
         threshold = STEP_THRESHOLD
@@ -173,11 +179,12 @@ class SelfTrainingModel_Curriculum(SemiSLModel):
             X = np.concatenate((X_train_l, X_train_pl))
             y = np.concatenate((y_train_l, y_train_pl))
 
-            self._model = self.base_model_fn()
+            self._model = self._base_model_fn(is_uda=self._is_uda)
             new_metrics = self._model.train(
                 (X, y),
                 (X_val, y_val),
                 trial=trial,
+                X_train_full=X_train_full,
             )
 
             metrics[f"pl_iter{i}"] = {

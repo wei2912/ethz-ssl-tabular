@@ -40,6 +40,7 @@ ST_TYPES: Dict[Optional[str], Callable[[Union[SLModel, SemiSLModel]], SemiSLMode
     None: lambda model: model(),
     "th-si": lambda model: SelfTrainingModel_ThresholdSingleIterate(model),
     "curr": lambda model: SelfTrainingModel_Curriculum(model),
+    "curr-uda": lambda model: SelfTrainingModel_Curriculum(model, is_uda=True),
     "fake": lambda model: SelfTrainingModel_Fake(model),
     "uda": lambda model: SelfTrainingModel_UDA(model),
 }

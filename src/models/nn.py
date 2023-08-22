@@ -90,10 +90,11 @@ class MLPModel(SLModel):
         train: Dataset,
         val: Dataset,
         trial: Optional[Trial] = None,
-        X_train_ul: npt.NDArray[np.float32] = None,
+        X_train_full: npt.NDArray[np.float32] = None,
     ) -> Dict[str, Any]:
         X_train, y_train = train
         X_val, y_val = val
+        assert self._is_uda != (X_train_full is None)
 
         input_size = X_train.shape[1]
         n_class = len(np.unique(y_val))  # FIXME: contains all classes with high prob.
@@ -132,9 +133,8 @@ class MLPModel(SLModel):
             pin_memory=self._is_device_cuda,
         )
         if self._is_uda:
-            assert X_train_ul is not None
             ul_loader = DataLoader(
-                TensorDataset(torch.from_numpy(X_train_ul).float()),
+                TensorDataset(torch.from_numpy(X_train_full).float()),
                 batch_size=BATCH_SIZE,
                 shuffle=True,
                 pin_memory=self._is_device_cuda,
@@ -177,7 +177,7 @@ class MLPModel(SLModel):
                         (X_ul_b,) = next(ul_loader_iter)
 
                     X_ul_corr_b = torch.from_numpy(
-                        scarf_corrupt(X_ul_b.numpy(), X_train_ul)
+                        scarf_corrupt(X_ul_b.numpy(), X_train_full)
                     )
                     X_ul_b = X_ul_b.to(self._device, non_blocking=True)
                     X_ul_corr_b = X_ul_corr_b.to(self._device, non_blocking=True)
