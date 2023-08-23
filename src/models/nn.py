@@ -135,7 +135,7 @@ class MLPModel(SLModel):
             assert X_train_full is not None
             ul_loader = DataLoader(
                 TensorDataset(torch.from_numpy(X_train_full).float()),
-                batch_size=2 * BATCH_SIZE,  # FIXME - magic number
+                batch_size=BATCH_SIZE,
                 shuffle=True,
                 pin_memory=self._is_device_cuda,
             )
