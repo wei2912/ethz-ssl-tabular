@@ -114,14 +114,23 @@ class SelfTrainingModel_Curriculum(SemiSLModel):
     Adapted from https://arxiv.org/abs/2001.06001.
     """
 
-    def __init__(self, base_model_fn: Callable[[], SLModel], is_uda: bool = False):
+    def __init__(
+        self,
+        base_model_fn: Callable[[], SLModel],
+        n_iter: int = 5,
+        is_uda: bool = False,
+    ):
         """
         :param base_model_fn: constructor for base supervised learning (SL) model, used
         for pseudolabelling
+        :param n_iter: no. of pseudolabelling iterations, must be between 1 to 5
+        (inclusive)
         :param is_uda: flag indicating if UDA is applied
         """
         super().__init__()
+        assert 1 <= n_iter <= 5
         self._base_model_fn = base_model_fn
+        self._n_iter = n_iter
         self._is_uda = is_uda
 
     def preprocess_data(self, X: pd.DataFrame, y: pd.Series) -> Dataset:
@@ -155,7 +164,7 @@ class SelfTrainingModel_Curriculum(SemiSLModel):
 
         threshold = STEP_THRESHOLD
         i = 0
-        while threshold <= 1.0:
+        while threshold <= 1.0 and i < self._n_iter:
             y_pl_probs = self._model.predict_proba(X_train_ul)
             y_pl = y_pl_probs.argmax(axis=1)
             y_pl_max_prob = y_pl_probs.max(axis=1)

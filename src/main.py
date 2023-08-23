@@ -41,6 +41,10 @@ SSL_TYPES: Dict[Optional[str], Callable[[Union[SLModel, SemiSLModel]], SemiSLMod
     "th-si": lambda model: SelfTrainingModel_ThresholdSingleIterate(model),
     "curr": lambda model: SelfTrainingModel_Curriculum(model),
     "curr-uda": lambda model: SelfTrainingModel_Curriculum(model, is_uda=True),
+    "curr-si": lambda model: SelfTrainingModel_Curriculum(model, n_iter=1),
+    "curr-si-uda": lambda model: SelfTrainingModel_Curriculum(
+        model, n_iter=1, is_uda=True
+    ),
     "fake": lambda model: SelfTrainingModel_Fake(model),
     "uda": lambda model: SelfTrainingModel_UDA(model),
 }
