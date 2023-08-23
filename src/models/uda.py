@@ -2,11 +2,10 @@ import numpy as np
 import math
 
 CORRUPTION_RATE = 0.6
-SEED = 654321
 
 
 def scarf_corrupt(X: np.ndarray, X_train: np.ndarray) -> np.ndarray:
-    rng = np.random.default_rng(seed=SEED)
+    rng = np.random.default_rng()
     N_FEATURE = X.shape[1]
     N_CORR_FEATURE = math.ceil(CORRUPTION_RATE * N_FEATURE)
 
